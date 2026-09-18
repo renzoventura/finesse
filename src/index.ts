@@ -46,7 +46,7 @@ async function main(): Promise<void> {
       const result = await ingestAllSources(db, sources, {
         now: new Date(),
         timeZone: config.tz,
-        lookbackHours: config.stravaLookbackHours,
+        lookbackHours: config.lookbackHours,
         weeklyTarget: config.weeklyTarget,
       });
       await postChannelMessages(readyClient, config.channelId, result.notices);

@@ -44,7 +44,7 @@ export type ApiKeyActivitySource = ActivitySourceBase & {
 };
 
 /**
- * External training data (Intervals.icu keys, Strava OAuth, …).
- * Implementations pull sessions; the bot writes them into checkins.
+ * External training data (Intervals.icu). Implementations pull sessions;
+ * the bot writes them into checkins and pings the crew channel.
  */
 export type ActivitySource = OauthActivitySource | ApiKeyActivitySource;

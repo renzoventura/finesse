@@ -265,11 +265,10 @@ async function handleConnect(
   ctx: AppContext,
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const sourceId = interaction.options.getString("source") ?? "intervals";
-  const source = ctx.sources[sourceId];
+  const source = ctx.sources.intervals;
   if (!source) {
     await interaction.reply({
-      content: connectMissingMessage(sourceId),
+      content: "Intervals.icu is not wired up on this bot.",
       ephemeral: true,
     });
     return;
@@ -281,22 +280,19 @@ async function handleConnect(
   }
   if (!ctx.config.publicUrl) {
     await interaction.reply({
-      content: `**${sourceId}** OAuth needs \`PUBLIC_URL\` (the public https origin of this bot).`,
+      content:
+        "Intervals OAuth needs `PUBLIC_URL` (the public https origin of this bot).",
       ephemeral: true,
     });
     return;
   }
-  const state = ctx.db.createOauthState(interaction.user.id, sourceId);
+  const state = ctx.db.createOauthState(interaction.user.id, source.id);
   const url = source.authorizeUrl(
     state,
-    oauthRedirectUri(ctx.config.publicUrl, sourceId),
+    oauthRedirectUri(ctx.config.publicUrl, source.id),
   );
-  const hint =
-    sourceId === "intervals"
-      ? "Authorizing the Finesse app is what turns on instant Garmin → Intervals pings. Strava-fed activities never ping; the 15-minute pull still catches those.\n"
-      : "";
   await interaction.reply({
-    content: `${hint}Connect **${sourceId}** (opens in browser):\n${url}`,
+    content: `Connect **Intervals.icu** (opens in browser):\n${url}\n\nActivities that arrived in Intervals via Strava do not fire instant webhooks; the 15-minute pull still catches them.`,
     ephemeral: true,
   });
 }
@@ -312,7 +308,7 @@ async function handleConnectModal(
   const source = ctx.sources[sourceId];
   if (source?.auth !== "api_key") {
     await interaction.reply({
-      content: connectMissingMessage(sourceId),
+      content: "Intervals.icu is not wired up on this bot.",
       ephemeral: true,
     });
     return;
@@ -351,7 +347,7 @@ async function handleConnectModal(
     const result = await ingestSource(ctx.db, source, {
       now: new Date(),
       timeZone: ctx.config.tz,
-      lookbackHours: ctx.config.stravaLookbackHours,
+      lookbackHours: ctx.config.lookbackHours,
       weeklyTarget: ctx.config.weeklyTarget,
     });
     posted = result.notices.length;
@@ -366,18 +362,11 @@ async function handleConnectModal(
 
   const logged =
     posted > 0
-      ? ` Posted **${posted}** workout(s) from the last ${ctx.config.stravaLookbackHours}h in the crew channel.`
-      : ` No new workouts in the last ${ctx.config.stravaLookbackHours}h (already posted, or Intervals has nothing yet).`;
+      ? ` Posted **${posted}** workout(s) from the last ${ctx.config.lookbackHours}h in the crew channel.`
+      : ` No new workouts in the last ${ctx.config.lookbackHours}h (already posted, or Intervals has nothing yet).`;
   await interaction.editReply({
-    content: `Linked **Intervals.icu**.${logged} New Garmin sessions ping the crew channel within about 15 minutes. \`/done\` still covers indoor / missed sync.`,
+    content: `Linked **Intervals.icu**.${logged} New sessions ping the crew channel within about 15 minutes (Garmin, Amazfit, Strava, or Apple Watch — as long as they show up on Intervals). Missed sync: \`/done\`.`,
   });
-}
-
-function connectMissingMessage(sourceId: string): string {
-  if (sourceId === "strava") {
-    return "Strava isn't wired up yet. Set `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, and `PUBLIC_URL` (a public https URL for the OAuth callback).";
-  }
-  return `Unknown source \`${sourceId}\`.`;
 }
 
 function apiKeyModal(sourceId: string): ModalBuilder {

@@ -2,13 +2,13 @@
 
 A Discord bot that keeps a small training crew honest. People log a session with `/done` or ✅, Garmin (and friends) can check in automatically, and the channel pings when someone trains.
 
-Product: [docs/prd.md](docs/prd.md). How it is built: [docs/architecture.md](docs/architecture.md).
+Product: [docs/prd.md](docs/prd.md). How it is built: [docs/architecture.md](docs/architecture.md). **Crew (Garmin / Apple / Amazfit / Strava):** [docs/crew-setup.md](docs/crew-setup.md).
 
 ## What it does
 
 - **One crew channel.** Check-ins, workout pings, Thursday/Saturday nudges, and the Sunday summary all live there.
 - **3× per week, one day each.** A second session the same local day still announces in chat; it does not become 2/3 until a new calendar day (`TZ`, default `Australia/Sydney`).
-- **Auto from watches.** `/connect` links [Intervals.icu](https://intervals.icu/) (Garmin native; personal API key works today). Strava is optional if you wire OAuth env. Indoor / missed sync: `/done`.
+- **Auto from watches.** `/connect` links [Intervals.icu](https://intervals.icu/). Garmin, Amazfit, Strava, and Apple Watch all sync **into Intervals** (not into Finesse). Indoor / missed sync: `/done`. Friends: [crew setup](docs/crew-setup.md).
 - **Every new workout pings the channel.** Details first (type, name, distance, time), weekly count after:
 
   ```
@@ -25,12 +25,13 @@ flowchart TB
     Garmin
     Apple[Apple Watch]
     Amazfit
+    StravaFeed[Strava]
   end
 
   Garmin --> Intervals[Intervals.icu]
-  Apple --> Strava
-  Amazfit --> Strava
-  Strava -.->|optional sync| Intervals
+  Amazfit --> Intervals
+  Apple -->|"HealthFit or Strava"| Intervals
+  StravaFeed --> Intervals
 
   subgraph process [Finesse — one Node process]
     Gateway[discord.js]
@@ -41,7 +42,6 @@ flowchart TB
   end
 
   Intervals -->|"poll + Garmin webhook"| HTTP
-  Strava --> Cron
   Cron --> Intervals
   HTTP --> DB
   Cron --> DB
@@ -49,6 +49,25 @@ flowchart TB
   DB --> Channel[Crew channel]
   Gateway --> Channel
   Gateway --> LLM
+```
+
+## For the crew
+
+Paste this in Discord. Full walkthrough: [docs/crew-setup.md](docs/crew-setup.md). Never paste the API key in chat — `/connect` opens a private popup.
+
+```
+Crew setup (auto check-in)
+
+1. Make a free Intervals.icu account: https://intervals.icu/signup
+2. Connect your watch at https://intervals.icu/settings
+   • Garmin → Garmin Connect, tick download activities
+   • Amazfit → Amazfit / Zepp, tick download workouts (same Zepp account as the phone app)
+   • Strava (or Apple Watch via Strava) → Strava, tick download activities
+   • Apple Watch without Strava → HealthFit app → Intervals.icu, auto-upload workouts
+3. Confirm a recent session is on your Intervals calendar
+4. Settings → Developer Settings → copy API key
+5. In this channel: /connect → paste the key in the popup (not in chat)
+6. Next workout should ping here within ~15 minutes. If it never syncs: /done
 ```
 
 ## You set this up
@@ -103,7 +122,7 @@ pnpm test
 pnpm dev
 ```
 
-In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/status` anywhere in the server. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu (API key now; OAuth after the app is approved).
+In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/status` anywhere in the server. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu. Send friends [docs/crew-setup.md](docs/crew-setup.md).
 
 Cron does not fire if this laptop sleeps. Use Railway for the real crew.
 
@@ -121,7 +140,7 @@ Without the volume, every deploy wipes streaks. The Dockerfile is there so `bett
 
 Two layers, both free:
 
-1. **Poll (works today).** Each person `/connect` and pastes their personal API key from Intervals **Settings → Developer Settings**. Garmin Connect (or Strava) syncs into Intervals; we ask Intervals on boot and every 15 minutes and post **each new workout** in the crew channel. Four HTTP calls per tick. No Intervals app review.
+1. **Poll (works today).** Each person follows [crew setup](docs/crew-setup.md): connect the watch **on Intervals.icu**, then `/connect` and paste their personal API key from Intervals **Settings → Developer Settings**. We ask Intervals on boot and every 15 minutes and post **each new workout** in the crew channel. Four HTTP calls per tick. No Intervals app review.
 2. **Webhook (near-instant for Garmin).** Intervals only sends `ACTIVITY_UPLOADED` / `ACTIVITY_ANALYZED` to an **OAuth app** the athlete has authorized. Personal API keys cannot subscribe to pings. Strava-originated activities **never** fire webhooks (Intervals docs). Keep the 15-minute pull either way.
 
 ### Turn on webhooks
@@ -138,7 +157,7 @@ Two layers, both free:
 4. When approved: **Settings → your app → Manage App**. Set webhook URL `{PUBLIC_URL}/webhooks/intervals`, pick a secret, enable **ACTIVITY_UPLOADED** and **ACTIVITY_ANALYZED**. Return body is ignored; we respond **200**.
 5. Put `INTERVALS_CLIENT_ID`, `INTERVALS_CLIENT_SECRET`, `INTERVALS_WEBHOOK_SECRET`, and `PUBLIC_URL` in Railway env. Restart. Boot log should show `intervals: oauth+webhook`.
 6. Each crew member runs `/connect` and authorizes Finesse with scope `ACTIVITY:READ`. That is what maps `athlete_id` on the ping to their Discord user. If they previously pasted an API key, they should `/connect` again after OAuth is live.
-7. Garmin → Intervals.icu (not via Strava) for the ping. Indoor / Amazfit / missed sync: `/done`.
+7. Instant webhooks need Garmin (or Amazfit) → Intervals.icu, not a Strava-only hop. Indoor / missed sync: `/done`.
 
 Open [your PUBLIC_URL]/webhooks/intervals in a browser — it should say `ok` once the secret env is set.
 
@@ -148,12 +167,12 @@ Set `GEMINI_API_KEY` (and optionally `LLM_PROVIDER=gemini`, `GEMINI_MODEL`). `/s
 
 ## Privacy
 
-Finesse is a private Discord bot. Linked Intervals.icu / Strava accounts are used only to see whether a crew member trained and to announce new workouts in the crew channel. We store athlete ids, OAuth/API tokens, and seen activity ids in SQLite on the host. We do not sell data, train models on it, or expose it outside the Discord server. Disconnect by regenerating the Intervals API key or revoking the Finesse app under Intervals settings.
+Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to see whether a crew member trained and to announce new workouts in the crew channel. We store athlete ids, OAuth/API tokens, and seen activity ids in SQLite on the host. We do not sell data, train models on it, or expose it outside the Discord server. Disconnect by regenerating the Intervals API key or revoking the Finesse app under Intervals settings.
 
 ## Plug-in points
 
 - **LLM:** `src/llm/types.ts` (`LlmProvider`). Gemini is `src/llm/gemini.ts`. Set `LLM_PROVIDER=none` to turn the coach off.
-- **Activity sources:** `src/sources/types.ts` (`ActivitySource`). Intervals.icu is always on (API key, or OAuth when env is set). Strava is `src/sources/strava.ts` when env is set. Manual `/done` always works. A day counts once toward the week; `source_workouts` still pings every newly seen activity.
+- **Activity sources:** `src/sources/types.ts` (`ActivitySource`). Intervals.icu is the only source (API key, or OAuth when env is set). Watches sync into Intervals; Finesse never talks to Strava. Manual `/done` always works. A day counts once toward the week; `source_workouts` still pings every newly seen activity.
 
 ## Commands
 
@@ -162,13 +181,13 @@ Finesse is a private Discord bot. Linked Intervals.icu / Strava accounts are use
 - `/status` — this week and streaks
 - `/setup` — level, goal, weekly target (feeds the coach)
 - `/coach` — private session suggestion
-- `/connect` — link Intervals.icu (API key, or OAuth when the app is approved) or Strava
+- `/connect` — link Intervals.icu (API key, or OAuth when the app is approved)
 
 ✅ on a message in the crew channel logs a check-in for whoever reacted.
 
 ## Schedule (`Australia/Sydney` unless `TZ` is set)
 
-- On boot — pull Intervals/Strava; unseen workouts ping the crew channel
+- On boot — pull Intervals; unseen workouts ping the crew channel
 - Every 15 minutes — same pull
 - Garmin → Intervals webhook — same ping, if OAuth + `PUBLIC_URL` are configured
 - Thu 19:00 — check on anyone with 0 this week

@@ -14,9 +14,7 @@ export type Config = {
   llmProvider: string;
   geminiApiKey: string | null;
   geminiModel: string;
-  stravaClientId: string | null;
-  stravaClientSecret: string | null;
-  stravaLookbackHours: number;
+  lookbackHours: number;
   intervalsClientId: string | null;
   intervalsClientSecret: string | null;
   intervalsWebhookSecret: string | null;
@@ -43,7 +41,7 @@ export function loadConfig(): Config {
     throw new Error("WEEKLY_TARGET must be a positive integer");
   }
   const port = Number(process.env.PORT ?? "3000");
-  const lookback = Number(process.env.STRAVA_LOOKBACK_HOURS ?? "36");
+  const lookback = Number(process.env.LOOKBACK_HOURS ?? "36");
   const geminiApiKey = optional("GEMINI_API_KEY");
   const llmProvider =
     process.env.LLM_PROVIDER?.trim() || (geminiApiKey ? "gemini" : "none");
@@ -60,10 +58,7 @@ export function loadConfig(): Config {
     llmProvider,
     geminiApiKey,
     geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
-    stravaClientId: optional("STRAVA_CLIENT_ID"),
-    stravaClientSecret: optional("STRAVA_CLIENT_SECRET"),
-    stravaLookbackHours:
-      Number.isInteger(lookback) && lookback >= 24 ? lookback : 36,
+    lookbackHours: Number.isInteger(lookback) && lookback >= 24 ? lookback : 36,
     intervalsClientId: optional("INTERVALS_CLIENT_ID"),
     intervalsClientSecret: optional("INTERVALS_CLIENT_SECRET"),
     intervalsWebhookSecret: optional("INTERVALS_WEBHOOK_SECRET"),

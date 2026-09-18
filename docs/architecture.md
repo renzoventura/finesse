@@ -8,12 +8,13 @@ flowchart TB
     Garmin
     Apple[Apple Watch]
     Amazfit
+    StravaFeed[Strava]
   end
 
   Garmin --> Intervals[Intervals.icu]
-  Apple --> Strava
-  Amazfit --> Strava
-  Strava -.->|optional sync| Intervals
+  Amazfit --> Intervals
+  Apple -->|"HealthFit or Strava"| Intervals
+  StravaFeed --> Intervals
 
   subgraph discord [Discord]
     Slash["/done /connect /setup /coach"]
@@ -35,8 +36,7 @@ flowchart TB
   LLM -.->|ephemeral| Slash
   Cron -->|"boot + every 15m"| Ingest
   Intervals -->|"GET activities"| Ingest
-  Intervals -->|"POST /webhooks/intervals Garmin only"| HTTP
-  Strava -->|"GET athlete/activities"| Ingest
+  Intervals -->|"POST /webhooks/intervals"| HTTP
   HTTP --> Ingest
   Ingest --> DB
   Ingest -->|"new workout notice"| Channel
@@ -48,7 +48,7 @@ When a workout lands:
 
 ```mermaid
 flowchart TD
-  A[New activity on Intervals or Strava] --> B[Webhook or poll]
+  A[New activity on Intervals.icu] --> B[Webhook or poll]
   B --> C{source + external_id already in source_workouts?}
   C -->|yes| D[No Discord ping]
   C -->|no| E[Insert source_workouts]
@@ -62,7 +62,7 @@ flowchart TD
 
 - TypeScript, Node.js LTS, discord.js v14, better-sqlite3, node-cron, pnpm, tsx, Biome.
 - LLM: `@google/genai` behind `LlmProvider` (Gemini Flash-Lite first).
-- Activity pull: Intervals.icu (API key and/or OAuth) and Strava REST behind `ActivitySource`. Hono serves `/health`, `/oauth/:source/callback`, and `POST /webhooks/intervals`.
+- Activity pull: Intervals.icu (API key and/or OAuth) behind `ActivitySource`. Watches sync into Intervals (Garmin, Amazfit, Strava, Apple Watch via HealthFit or Strava). Hono serves `/health`, `/oauth/intervals/callback`, and `POST /webhooks/intervals`.
 - Later: another file that implements the same interface (OpenAI, Garmin, etc.).
 
 ## Ports
@@ -78,12 +78,12 @@ complete({ system, user }) -> string
 **Activity source** (`src/sources/types.ts`)
 
 ```
-authorizeUrl + exchangeCode + refresh   (OAuth: Strava, Intervals when env is set)
+authorizeUrl + exchangeCode + refresh   (OAuth: Intervals when env is set)
 verifyApiKey + refresh-noop             (API key: Intervals until OAuth is approved)
 pull
 ```
 
-Pulled sessions and Intervals webhooks are written into `checkins` with `source = intervals` or `strava`. Unique `(user_id, checkin_date)` means an auto-pull cannot double-count `/done` the same day. `source_workouts` records each external activity id so a second session that day still pings the crew channel.
+Pulled sessions and Intervals webhooks are written into `checkins` with `source = intervals`. Unique `(user_id, checkin_date)` means an auto-pull cannot double-count `/done` the same day. `source_workouts` records each external activity id so a second session that day still pings the crew channel.
 
 `source_accounts` stores tokens per `(user_id, source)`, so a second wearable is another row, not new user columns.
 
@@ -92,7 +92,7 @@ Pulled sessions and Intervals webhooks are written into `checkins` with `source 
 ```
 Member  -- /done or ✅ -->  SQLite (source=manual) + crew channel
 Intervals webhook  -- ACTIVITY_UPLOADED -->  SQLite + crew channel
-Intervals/Strava  -- boot + every 15 min pull -->  SQLite + crew channel
+Intervals  -- boot + every 15 min pull -->  SQLite + crew channel
 /coach  -- LlmProvider -->  ephemeral reply
 node-cron  -- Mon 00:00 reset, Sun 22:00, Thu/Sat 19:00 -->  SQLite / crew channel
 ```
@@ -151,7 +151,7 @@ erDiagram
 
 **oauth_states** — short-lived `/connect` CSRF state
 
-**source_workouts** — `(source, external_id)` of each announced Garmin/Intervals/Strava activity
+**source_workouts** — `(source, external_id)` of each announced Intervals.icu activity
 
 Calendar math uses the local date string in `TZ`. Week window is `week_start` inclusive to `+7 days` exclusive. Streak hit is `checkins >= weekly_min` per person.
 
@@ -162,7 +162,7 @@ Calendar math uses the local date string in `TZ`. Week window is `week_start` in
 | GET | `/health` | Railway / uptime |
 | GET | `/webhooks/intervals` | Browser check; `ok` when secret env is set |
 | POST | `/webhooks/intervals` | Garmin → Intervals activity events |
-| GET | `/oauth/:source/callback` | Intervals or Strava OAuth return |
+| GET | `/oauth/:source/callback` | Intervals OAuth return |
 
 ## Hosting
 
@@ -172,12 +172,10 @@ SQLite must sit on a persistent volume. Railway volume at `/data`, `DATABASE_PAT
 
 ## Env
 
-See `.env.example`. Discord vars are required. Gemini, Strava, and Intervals OAuth/webhooks are optional. Intervals API-key `/connect` needs no extra Intervals env. The bot still runs the v0 loop without any of them.
+See `.env.example`. Discord vars are required. Gemini and Intervals OAuth/webhooks are optional. Intervals API-key `/connect` needs no extra Intervals env. The bot still runs the v0 loop without any of them.
 
 ## Source notes
 
-**Intervals.icu.** API-key `/connect` (poll on boot + every 15 minutes + channel ping) or OAuth `/connect` once an app is approved at [oauth/apply](https://intervals.icu/oauth/apply). Webhooks require that OAuth app, `INTERVALS_WEBHOOK_SECRET`, and a public `PUBLIC_URL`. Pings are `ACTIVITY_UPLOADED` / `ACTIVITY_ANALYZED`; Intervals does **not** send them for Strava-originated activities. Garmin → Intervals is the path that webhooks. The 15-minute pull is the safety net. Tokens: Intervals OAuth has no refresh token (store `expiresAt` 0). Respond **200** to webhooks (204 used to be retried).
+**Intervals.icu.** The only activity source. API-key `/connect` (poll on boot + every 15 minutes + channel ping) or OAuth `/connect` once an app is approved at [oauth/apply](https://intervals.icu/oauth/apply). Webhooks require that OAuth app, `INTERVALS_WEBHOOK_SECRET`, and a public `PUBLIC_URL`. Pings are `ACTIVITY_UPLOADED` / `ACTIVITY_ANALYZED`; Intervals does **not** send them for Strava-originated activities. Garmin and Amazfit → Intervals can webhook; Strava-fed sessions still arrive on the 15-minute pull. Tokens: Intervals OAuth has no refresh token (store `expiresAt` 0). Respond **200** to webhooks (204 used to be retried). Crew watch setup: [crew-setup.md](crew-setup.md).
 
-**Strava.** Garmin / Apple Watch / Amazfit outdoor sync into Strava. Poll with 36h lookback. Needs a Strava subscription on the API app owner, then self-upgrade to 10 athletes. Manual `/done` covers indoor Amazfit and forgotten watches.
-
-**Not used.** Strava MCP, unofficial Garmin scrapers, HealthKit (needs an iOS app), paid aggregators.
+**Not used.** Strava as a Finesse API (crew Strava accounts connect *inside* Intervals), unofficial Garmin scrapers, HealthKit (needs an iOS app), paid aggregators.

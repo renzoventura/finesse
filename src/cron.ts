@@ -44,7 +44,7 @@ export function startCron(
       const result = await ingestAllSources(db, sources, {
         now: new Date(),
         timeZone: config.tz,
-        lookbackHours: config.stravaLookbackHours,
+        lookbackHours: config.lookbackHours,
         weeklyTarget: config.weeklyTarget,
       });
       await postChannelMessages(client, config.channelId, result.notices);

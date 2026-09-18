@@ -66,19 +66,7 @@ export const commands = [
   },
   {
     name: "connect",
-    description: "Link Intervals.icu or Strava so workouts count automatically",
+    description: "Link Intervals.icu so workouts count automatically",
     dm_permission: false,
-    options: [
-      {
-        type: ApplicationCommandOptionType.String,
-        name: "source",
-        description: "Data source (default Intervals.icu)",
-        required: false,
-        choices: [
-          { name: "Intervals.icu", value: "intervals" },
-          { name: "Strava", value: "strava" },
-        ],
-      },
-    ],
   },
 ] as const;

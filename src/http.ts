@@ -102,7 +102,7 @@ export function startHttpServer(
         const ingest = await ingestSource(db, source, {
           now: new Date(),
           timeZone: config.tz,
-          lookbackHours: config.stravaLookbackHours,
+          lookbackHours: config.lookbackHours,
           weeklyTarget: config.weeklyTarget,
         });
         if (hooks.onAutoCheckin) {
