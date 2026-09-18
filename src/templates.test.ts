@@ -1,27 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { fallBehindNudge, sundaySummary } from "./templates.js";
+import type { StatusPerson } from "./db.js";
+import {
+  autoCheckinNotice,
+  fallBehindNudge,
+  formatWorkoutLabel,
+  sundaySummary,
+} from "./templates.js";
+
+function person(
+  overrides: Partial<StatusPerson> & Pick<StatusPerson, "discordId" | "name">,
+): StatusPerson {
+  return {
+    currentStreak: 0,
+    checkins: 0,
+    weeklyTarget: 3,
+    hit: false,
+    level: null,
+    goal: null,
+    sources: [],
+    ...overrides,
+  };
+}
 
 describe("templates", () => {
   it("formats a Sunday summary", () => {
     const text = sundaySummary({
       weekStart: "2026-09-14",
       groupStreak: 2,
-      weeklyTarget: 3,
       people: [
-        {
+        person({
           discordId: "1",
           name: "Renzo",
           currentStreak: 4,
           checkins: 3,
           hit: true,
-        },
-        {
+        }),
+        person({
           discordId: "2",
           name: "Saish",
           currentStreak: 0,
           checkins: 1,
           hit: false,
-        },
+        }),
       ],
     });
     expect(text).toContain("Renzo");
@@ -41,5 +61,28 @@ describe("templates", () => {
     });
     expect(text).toContain("<@99>");
     expect(text).toContain("0/3");
+  });
+
+  it("announces an auto check-in with a mention", () => {
+    const text = autoCheckinNotice({
+      discordId: "u1",
+      note: "Run — Easy · 5.2 km · 32 min",
+      checkins: 2,
+      weeklyTarget: 3,
+    });
+    expect(text).toBe(
+      "<@u1> just worked out: **Run — Easy · 5.2 km · 32 min**\n**2/3** this week",
+    );
+  });
+
+  it("formats workout details with distance and time", () => {
+    expect(
+      formatWorkoutLabel({
+        type: "Run",
+        name: "Easy",
+        distanceMeters: 5234,
+        movingTimeSec: 1920,
+      }),
+    ).toBe("Run — Easy · 5.2 km · 32 min");
   });
 });

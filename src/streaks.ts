@@ -84,6 +84,7 @@ export type UserRollInput = {
   discordId: string;
   currentStreak: number;
   checkins: number;
+  weeklyTarget: number;
 };
 
 export type WeekRoll = {
@@ -96,10 +97,9 @@ export function rollWeek(input: {
   weekStart: string;
   groupStreak: number;
   users: UserRollInput[];
-  weeklyTarget: number;
 }): WeekRoll {
   const users = input.users.map((user) => {
-    const hit = user.checkins >= input.weeklyTarget;
+    const hit = user.checkins >= user.weeklyTarget;
     return {
       discordId: user.discordId,
       currentStreak: hit ? user.currentStreak + 1 : 0,

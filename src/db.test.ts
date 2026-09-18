@@ -11,8 +11,6 @@ const TARGET = 3;
 const MON_SEP_7 = new Date("2026-09-07T02:00:00.000Z");
 /** Monday 14 Sep 2026 00:00 Sydney = 2026-09-13 14:00 UTC */
 const MON_SEP_14 = new Date("2026-09-13T14:00:00.000Z");
-/** Wednesday 16 Sep 2026 12:00 Sydney */
-const WED_SEP_16 = new Date("2026-09-16T02:00:00.000Z");
 
 function tempDb() {
   const dir = mkdtempSync(join(tmpdir(), "finesse-"));
@@ -46,16 +44,16 @@ describe("check-ins", () => {
     db.close();
   });
 
-  it("opts the user in on first /done", () => {
+  it("stores setup profile fields", () => {
     const db = tempDb();
-    db.recordCheckin("u1", "Renzo", null, { now: MON_SEP_7, timeZone: TZ });
-    const status = db.status({
-      now: WED_SEP_16,
-      timeZone: TZ,
-      weeklyTarget: TARGET,
+    const profile = db.updateProfile("u1", "Renzo", {
+      level: "intermediate",
+      goal: "5k",
+      weeklyTarget: 4,
     });
-    expect(status.people).toHaveLength(1);
-    expect(status.people[0]?.name).toBe("Renzo");
+    expect(profile.level).toBe("intermediate");
+    expect(profile.goal).toBe("5k");
+    expect(profile.weeklyTarget).toBe(4);
     db.close();
   });
 });

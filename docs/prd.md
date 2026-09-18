@@ -34,15 +34,15 @@ In:
 - Individual and group streaks
 - Sunday summary and “check on X” posts in that same channel
 
-Out: LLM, Strava, avatars, karma, goals, questionnaire, DM coach, multiple channels.
+Out: avatars, karma, questionnaire, multiple channels.
 
-### v1 — Honest streaks
+### v1 — Honest streaks (in)
 
-Daily Strava poll (not a live webhook). A day counts if Strava has an activity or the person checked in manually. Optional per-person weekly target (still default 3). OAuth only; no passwords.
+Daily poll of linked Intervals.icu and/or Strava, plus Intervals webhooks when the OAuth app is approved. A day counts once toward the 3× week target if a linked source has an activity or the person checked in manually. Every newly seen workout still pings the crew channel, with details first and the weekly count after. Intervals API keys work without an app. Instant Garmin pings need an Intervals OAuth app (free, apply at intervals.icu/oauth/apply); Strava-fed activities never ping.
 
-### v2 — Coach
+### v2 — Coach (in)
 
-Onboarding adds level and goal. Gemini Flash-Lite coaches in DMs only. Weekly report gets LLM flavor.
+`/setup` stores level and goal. `/coach` replies ephemerally (only the asker sees it) so individual context never hits the group. Sunday report uses the LLM with the v0 template as fallback. Gemini is the first `LlmProvider`; swap with `LLM_PROVIDER`.
 
 ### v3 — Delight (optional)
 
@@ -66,16 +66,15 @@ Needs Garmin Health API approval and/or an iOS HealthKit app. Amazfit has no pat
 - Repeat `/done` the same day updates the note; it does not double-count.
 - Individual streak: consecutive weeks hitting 3.
 - Group streak: consecutive weeks every opted-in member hit 3.
-- Sunday 20:00: summary of the **current** week.
+- Sunday 22:00: summary of the **current** week (after the 15-minute source pull).
 - Monday 00:00: apply streak updates, roll the week. Catch up on boot if the bot was down.
 - Thursday 19:00: nudge anyone with **0** this week.
 - Saturday 19:00: nudge anyone with **fewer than 2**.
 - One Discord channel for check-ins, nudges, and the Sunday summary.
 
-## Later decisions (not v0)
+## Later decisions
 
 - Split channels (check-ins vs general vs weekly-report) if the one room gets noisy.
-- Strava: daily scheduled check, late in the day, lookback ≥ 24h so watch sync lag is not a miss.
 - Confirm whether Strava’s API subscription rule hits each member or only the app owner.
 - Apple Watch in v1 routes through Strava. A companion iOS app is a v4 question.
 - Garmin unofficial APIs and paid aggregators are rejected (credentials, fragility, cost).

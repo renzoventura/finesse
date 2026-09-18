@@ -1,3 +1,4 @@
+import { createLlmProvider } from "../llm/create.js";
 import { postSundaySummary, renderSundaySummary } from "../posts.js";
 import { bootBot, bootDb, isDryRun } from "./boot.js";
 
@@ -10,7 +11,12 @@ async function main(): Promise<void> {
   }
 
   const { client, db, config, shutdown } = await bootBot();
-  const text = await postSundaySummary(client, db, config);
+  const text = await postSundaySummary(
+    client,
+    db,
+    config,
+    createLlmProvider(config),
+  );
   console.log(text);
   await shutdown();
 }

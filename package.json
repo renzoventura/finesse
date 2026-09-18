@@ -19,9 +19,12 @@
   },
   "packageManager": "pnpm@10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e",
   "dependencies": {
+    "@google/genai": "^2.23.0",
+    "@hono/node-server": "^2.1.1",
     "better-sqlite3": "^13.0.3",
     "discord.js": "^14.27.0",
     "dotenv": "^18.0.0",
+    "hono": "^4.13.8",
     "node-cron": "^4.6.0"
   },
   "devDependencies": {
@@ -34,8 +37,10 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@google/genai",
       "better-sqlite3",
-      "esbuild"
+      "esbuild",
+      "protobufjs"
     ]
   }
 }

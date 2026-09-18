@@ -59,10 +59,9 @@ describe("rollWeek", () => {
     const rolled = rollWeek({
       weekStart: "2026-09-07",
       groupStreak: 2,
-      weeklyTarget: 3,
       users: [
-        { discordId: "1", currentStreak: 4, checkins: 3 },
-        { discordId: "2", currentStreak: 0, checkins: 5 },
+        { discordId: "1", currentStreak: 4, checkins: 3, weeklyTarget: 3 },
+        { discordId: "2", currentStreak: 0, checkins: 5, weeklyTarget: 3 },
       ],
     });
     expect(rolled.nextWeekStart).toBe("2026-09-14");
@@ -74,10 +73,9 @@ describe("rollWeek", () => {
     const rolled = rollWeek({
       weekStart: "2026-09-07",
       groupStreak: 4,
-      weeklyTarget: 3,
       users: [
-        { discordId: "1", currentStreak: 4, checkins: 3 },
-        { discordId: "2", currentStreak: 2, checkins: 2 },
+        { discordId: "1", currentStreak: 4, checkins: 3, weeklyTarget: 3 },
+        { discordId: "2", currentStreak: 2, checkins: 2, weeklyTarget: 3 },
       ],
     });
     expect(rolled.groupStreak).toBe(0);
@@ -87,11 +85,24 @@ describe("rollWeek", () => {
     ]);
   });
 
+  it("uses each person's own weekly target", () => {
+    const rolled = rollWeek({
+      weekStart: "2026-09-07",
+      groupStreak: 1,
+      users: [
+        { discordId: "1", currentStreak: 1, checkins: 2, weeklyTarget: 2 },
+        { discordId: "2", currentStreak: 1, checkins: 2, weeklyTarget: 3 },
+      ],
+    });
+    expect(rolled.users[0]?.hit).toBe(true);
+    expect(rolled.users[1]?.hit).toBe(false);
+    expect(rolled.groupStreak).toBe(0);
+  });
+
   it("resets the group when nobody is opted in", () => {
     const rolled = rollWeek({
       weekStart: "2026-09-07",
       groupStreak: 3,
-      weeklyTarget: 3,
       users: [],
     });
     expect(rolled.groupStreak).toBe(0);

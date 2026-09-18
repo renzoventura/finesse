@@ -2,9 +2,22 @@ import type { Client } from "discord.js";
 import { schedule } from "node-cron";
 import type { Config } from "./config.js";
 import type { FinesseDb } from "./db.js";
-import { postFallBehindNudge, postSundaySummary } from "./posts.js";
+import type { LlmProvider } from "./llm/types.js";
+import {
+  postChannelMessages,
+  postFallBehindNudge,
+  postSundaySummary,
+} from "./posts.js";
+import { ingestAllSources } from "./sources/ingest.js";
+import type { ActivitySource } from "./sources/types.js";
 
-export function startCron(client: Client, db: FinesseDb, config: Config): void {
+export function startCron(
+  client: Client,
+  db: FinesseDb,
+  config: Config,
+  llm: LlmProvider | null,
+  sources: Record<string, ActivitySource>,
+): void {
   const timezone = config.tz;
   const wrap = (label: string, fn: () => Promise<void>) => () => {
     fn().catch((error: unknown) => {
@@ -26,9 +39,23 @@ export function startCron(client: Client, db: FinesseDb, config: Config): void {
   );
 
   schedule(
-    "0 20 * * 0",
+    "*/15 * * * *",
+    wrap("source-ingest", async () => {
+      const result = await ingestAllSources(db, sources, {
+        now: new Date(),
+        timeZone: config.tz,
+        lookbackHours: config.stravaLookbackHours,
+        weeklyTarget: config.weeklyTarget,
+      });
+      await postChannelMessages(client, config.channelId, result.notices);
+    }),
+    { timezone },
+  );
+
+  schedule(
+    "0 22 * * 0",
     wrap("sunday-summary", async () => {
-      await postSundaySummary(client, db, config);
+      await postSundaySummary(client, db, config, llm);
       console.log("[cron] sunday summary posted");
     }),
     { timezone },

@@ -1,83 +1,183 @@
 # Finesse architecture
 
-v0 is one always-on Node process: Discord gateway + in-process cron + one SQLite file.
+One always-on Node process: Discord gateway + in-process cron + SQLite + a small HTTP server (health, OAuth, Intervals webhooks).
 
-## Stack by version
+```mermaid
+flowchart TB
+  subgraph watches [Watches]
+    Garmin
+    Apple[Apple Watch]
+    Amazfit
+  end
 
-- **v0:** TypeScript, Node.js LTS, discord.js v14, better-sqlite3, node-cron, pnpm, tsx, Biome.
-- **v1:** Hono (or similar) for Strava OAuth redirect; Strava REST; refresh tokens in SQLite.
-- **v2:** `@google/genai`, Gemini Flash-Lite.
-- **v3:** same AI Studio key for image gen.
-- **v4:** provider-gated wearable APIs; not designed yet.
+  Garmin --> Intervals[Intervals.icu]
+  Apple --> Strava
+  Amazfit --> Strava
+  Strava -.->|optional sync| Intervals
 
-No Drizzle in v0. Three tables, prepared statements. Hono is not needed until OAuth.
+  subgraph discord [Discord]
+    Slash["/done /connect /setup /coach"]
+    Channel[Crew channel]
+  end
 
-## v0 process
+  subgraph process [Finesse]
+    Gateway[discord.js v14]
+    Cron["node-cron"]
+    HTTP["Hono :PORT"]
+    Ingest[ingest + claimSourceWorkout]
+    DB[(SQLite WAL)]
+    LLM["LlmProvider / Gemini"]
+  end
+
+  Slash --> Gateway
+  Gateway --> DB
+  Gateway --> LLM
+  LLM -.->|ephemeral| Slash
+  Cron -->|"boot + every 15m"| Ingest
+  Intervals -->|"GET activities"| Ingest
+  Intervals -->|"POST /webhooks/intervals Garmin only"| HTTP
+  Strava -->|"GET athlete/activities"| Ingest
+  HTTP --> Ingest
+  Ingest --> DB
+  Ingest -->|"new workout notice"| Channel
+  Gateway --> Channel
+  Cron -->|"Sun 22:00, Thu/Sat 19:00, Mon 00:00"| Channel
+```
+
+When a workout lands:
+
+```mermaid
+flowchart TD
+  A[New activity on Intervals or Strava] --> B[Webhook or poll]
+  B --> C{source + external_id already in source_workouts?}
+  C -->|yes| D[No Discord ping]
+  C -->|no| E[Insert source_workouts]
+  E --> F[Ping crew: details, then n/3]
+  F --> G[recordCheckin unique per local day]
+  G -->|first session that day| H[Counts toward weekly target]
+  G -->|already checked in that day| I[Streak unchanged, ping still sent]
+```
+
+## Stack
+
+- TypeScript, Node.js LTS, discord.js v14, better-sqlite3, node-cron, pnpm, tsx, Biome.
+- LLM: `@google/genai` behind `LlmProvider` (Gemini Flash-Lite first).
+- Activity pull: Intervals.icu (API key and/or OAuth) and Strava REST behind `ActivitySource`. Hono serves `/health`, `/oauth/:source/callback`, and `POST /webhooks/intervals`.
+- Later: another file that implements the same interface (OpenAI, Garmin, etc.).
+
+## Ports
+
+**LLM** (`src/llm/types.ts`)
 
 ```
-Member  -- /done or ✅ -->  SQLite
-node-cron  -- Monday reset -->  SQLite
-node-cron  -- Sun summary, Thu/Sat nudge -->  one crew channel
+complete({ system, user }) -> string
 ```
 
-Slash commands are registered per guild (`DISCORD_GUILD_ID`) so they appear immediately.
+`createLlmProvider` reads `LLM_PROVIDER`. Unknown values fail fast. Missing Gemini key disables the coach; Sunday falls back to the template.
 
-Intents: `Guilds`, `GuildMessages`, `GuildMessageReactions`. Partials: `Message`, `Channel`, `Reaction`, `User` (uncached ✅). No privileged intents.
+**Activity source** (`src/sources/types.ts`)
+
+```
+authorizeUrl + exchangeCode + refresh   (OAuth: Strava, Intervals when env is set)
+verifyApiKey + refresh-noop             (API key: Intervals until OAuth is approved)
+pull
+```
+
+Pulled sessions and Intervals webhooks are written into `checkins` with `source = intervals` or `strava`. Unique `(user_id, checkin_date)` means an auto-pull cannot double-count `/done` the same day. `source_workouts` records each external activity id so a second session that day still pings the crew channel.
+
+`source_accounts` stores tokens per `(user_id, source)`, so a second wearable is another row, not new user columns.
+
+## Process
+
+```
+Member  -- /done or ✅ -->  SQLite (source=manual) + crew channel
+Intervals webhook  -- ACTIVITY_UPLOADED -->  SQLite + crew channel
+Intervals/Strava  -- boot + every 15 min pull -->  SQLite + crew channel
+/coach  -- LlmProvider -->  ephemeral reply
+node-cron  -- Mon 00:00 reset, Sun 22:00, Thu/Sat 19:00 -->  SQLite / crew channel
+```
+
+Slash commands are registered per guild. Intents: `Guilds`, `GuildMessages`, `GuildMessageReactions`. No privileged intents. `/coach` is ephemeral in the server so personal context does not hit the channel.
 
 ## Data model
 
-**users**
+```mermaid
+erDiagram
+  users ||--o{ checkins : logs
+  users ||--o{ source_accounts : links
+  users ||--o{ source_workouts : announced
+  group_state {
+    int group_streak
+    text week_start
+  }
+  users {
+    text discord_id PK
+    text name
+    int current_streak
+    int opted_in
+    int weekly_min
+    text base_level
+    text goal
+  }
+  checkins {
+    int id PK
+    text user_id FK
+    text checkin_date
+    text note
+    text source
+  }
+  source_accounts {
+    text user_id FK
+    text source
+    text external_id
+    int expires_at
+  }
+  source_workouts {
+    text source
+    text external_id
+    text user_id FK
+    text checkin_date
+    text note
+  }
+```
 
-- `discord_id` text primary key
-- `name` text (last seen display name)
-- `current_streak` integer
-- `opted_in` integer (1 after `/join` or first check-in)
+**users** — `discord_id`, `name`, `current_streak`, `opted_in`, `weekly_min`, `base_level`, `goal`
 
-**checkins**
+**checkins** — `user_id`, `ts`, `checkin_date`, `note`, `source`, unique `(user_id, checkin_date)`
 
-- `id` integer primary key
-- `user_id` text references users
-- `ts` text ISO timestamp
-- `checkin_date` text `YYYY-MM-DD` in `TZ`
-- `note` text nullable
-- unique `(user_id, checkin_date)`
+**group_state** — `group_streak`, `week_start`
 
-**group_state** (singleton `id = 1`)
+**source_accounts** — `user_id`, `source`, `external_id`, tokens, `expires_at`
 
-- `group_streak` integer
-- `week_start` text Monday `YYYY-MM-DD`
+**oauth_states** — short-lived `/connect` CSRF state
 
-Calendar math uses the local date string, not UTC midnight. Week window is `week_start` inclusive to `week_start + 7 days` exclusive.
+**source_workouts** — `(source, external_id)` of each announced Garmin/Intervals/Strava activity
 
-## Streak roll
+Calendar math uses the local date string in `TZ`. Week window is `week_start` inclusive to `+7 days` exclusive. Streak hit is `checkins >= weekly_min` per person.
 
-On Monday (and on boot if `week_start + 7 days <= today`):
+## HTTP
 
-1. For each opted-in user, count check-ins in the closed week.
-2. Streak becomes `current + 1` if count ≥ 3, else `0`.
-3. Group streak becomes `group + 1` if every opted-in user hit 3, else `0`.
-4. `week_start` advances seven days. Repeat if the bot missed multiple Mondays.
-
-If nobody is opted in, group streak is `0`.
+| Method | Path | Why |
+|---|---|---|
+| GET | `/health` | Railway / uptime |
+| GET | `/webhooks/intervals` | Browser check; `ok` when secret env is set |
+| POST | `/webhooks/intervals` | Garmin → Intervals activity events |
+| GET | `/oauth/:source/callback` | Intervals or Strava OAuth return |
 
 ## Hosting
 
-SQLite must sit on a persistent volume. Railway’s container disk is wiped on deploy.
+SQLite must sit on a persistent volume. Railway volume at `/data`, `DATABASE_PATH=/data/finesse.sqlite`, one replica.
 
-- Local: `DATABASE_PATH=./data/finesse.sqlite`
-- Railway: volume mount `/data`, `DATABASE_PATH=/data/finesse.sqlite`, **one replica**
-- Image: `Dockerfile` compiles `better-sqlite3` on Linux (do not copy macOS `node_modules`)
-
-Cron only runs while the process is up. A sleeping laptop will miss Sunday.
+`PUBLIC_URL` must be the public https origin for OAuth and Intervals webhooks: `{PUBLIC_URL}/oauth/intervals/callback`, `{PUBLIC_URL}/webhooks/intervals`.
 
 ## Env
 
-See `.env.example`. One `CHANNEL_ID` for check-ins, nudges, and the Sunday post. `TZ` defaults to `Australia/Sydney`. `WEEKLY_TARGET` defaults to 3.
+See `.env.example`. Discord vars are required. Gemini, Strava, and Intervals OAuth/webhooks are optional. Intervals API-key `/connect` needs no extra Intervals env. The bot still runs the v0 loop without any of them.
 
-## v1+ appendix
+## Source notes
 
-**Strava (chosen for v1).** One OAuth integration covers Garmin, Apple Watch (Strava app), and Amazfit outdoor via Zepp. Daily poll at end of day with ≥24h lookback. Manual `/done` remains the fallback (Amazfit indoor, forgotten watches). New Strava apps start in single-athlete mode; confirm 2026 API subscription rules.
+**Intervals.icu.** API-key `/connect` (poll on boot + every 15 minutes + channel ping) or OAuth `/connect` once an app is approved at [oauth/apply](https://intervals.icu/oauth/apply). Webhooks require that OAuth app, `INTERVALS_WEBHOOK_SECRET`, and a public `PUBLIC_URL`. Pings are `ACTIVITY_UPLOADED` / `ACTIVITY_ANALYZED`; Intervals does **not** send them for Strava-originated activities. Garmin → Intervals is the path that webhooks. The 15-minute pull is the safety net. Tokens: Intervals OAuth has no refresh token (store `expiresAt` 0). Respond **200** to webhooks (204 used to be retried).
 
-**Not used.** Strava MCP (read-only chat, not detection). Official Garmin Health API (partner-gated; revisit in v4). Unofficial Garmin scrapers (passwords, broke under bot-blocking). HealthKit (needs an iOS app). Amazfit has no developer API. Paid aggregators (Terra, ROOK, Vital, Spike) are company-priced. Open Wearables still needs underlying provider approvals.
+**Strava.** Garmin / Apple Watch / Amazfit outdoor sync into Strava. Poll with 36h lookback. Needs a Strava subscription on the API app owner, then self-upgrade to 10 athletes. Manual `/done` covers indoor Amazfit and forgotten watches.
 
-**v2.** Personal coaching stays in DMs so individual context never hits the group channel. Weekly report can keep the v0 template as a fallback if Gemini is down.
+**Not used.** Strava MCP, unofficial Garmin scrapers, HealthKit (needs an iOS app), paid aggregators.

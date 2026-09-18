@@ -16,5 +16,6 @@ RUN pnpm build && pnpm prune --prod
 
 ENV NODE_ENV=production
 ENV DATABASE_PATH=/data/finesse.sqlite
+EXPOSE 3000
 
 CMD ["node", "dist/index.js"]
