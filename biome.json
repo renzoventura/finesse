@@ -1,0 +1,25 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "files": {
+    "includes": ["src/**/*.ts", "*.json"],
+    "ignoreUnknown": true
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "assist": {
+    "enabled": true
+  }
+}
