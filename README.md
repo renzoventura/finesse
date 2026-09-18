@@ -53,7 +53,9 @@ flowchart TB
 
 ## For the crew
 
-Paste this in Discord. Full walkthrough: [docs/crew-setup.md](docs/crew-setup.md). Never paste the API key in chat — `/connect` opens a private popup.
+Paste this in Discord. Full walkthrough: [docs/crew-setup.md](docs/crew-setup.md). Never paste the API key in chat — `/connect` or the **Link Intervals.icu** button opens a private popup.
+
+`/join` walks a new member through that flow and posts it in the crew channel. Until they link, Finesse DMs them (or pings the channel if DMs are off) around 10:00 local time. `/done` and `/status` keep a private reminder unless they tap **I'll use /done for now** (quiet for 2 days).
 
 ```
 Crew setup (auto check-in)
@@ -66,7 +68,7 @@ Crew setup (auto check-in)
    • Apple Watch without Strava → HealthFit app → Intervals.icu, auto-upload workouts
 3. Confirm a recent session is on your Intervals calendar
 4. Settings → Developer Settings → copy API key
-5. In this channel: /connect → paste the key in the popup (not in chat)
+5. In this channel: `/join` or `/connect`, or tap **Link Intervals.icu** — paste the key in the popup (not in chat)
 6. Next workout should ping here within ~15 minutes. If it never syncs: /done
 ```
 
@@ -176,7 +178,7 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 
 ## Commands
 
-- `/join` — opt into the weekly crew
+- `/join` — opt in and start Intervals.icu setup
 - `/done [note]` — log today (in the crew channel)
 - `/status` — this week and streaks
 - `/setup` — level, goal, weekly target (feeds the coach)
@@ -189,6 +191,7 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 
 - On boot — pull Intervals; unseen workouts ping the crew channel
 - Every 15 minutes — same pull
+- 10:00 — remind anyone who joined but has not linked Intervals.icu
 - Garmin → Intervals webhook — same ping, if OAuth + `PUBLIC_URL` are configured
 - Thu 19:00 — check on anyone with 0 this week
 - Sat 19:00 — check on anyone with fewer than 2

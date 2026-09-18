@@ -1,4 +1,5 @@
-import type { Client } from "discord.js";
+import type { Client, MessageCreateOptions } from "discord.js";
+import { CONNECT_NUDGE_GAP_MS, onboardButtons } from "./bot/onboard.js";
 import type { Config } from "./config.js";
 import type { FinesseDb } from "./db.js";
 import {
@@ -7,7 +8,12 @@ import {
   weeklyReportUserPrompt,
 } from "./llm/prompts.js";
 import type { LlmProvider } from "./llm/types.js";
-import { fallBehindNudge, sundaySummary } from "./templates.js";
+import {
+  connectNudgeChannel,
+  connectNudgeDm,
+  fallBehindNudge,
+  sundaySummary,
+} from "./templates.js";
 
 export async function postSundaySummary(
   client: Client,
@@ -44,7 +50,7 @@ export async function postSundaySummary(
       text = fallback;
     }
   }
-  await send(client, config.channelId, text);
+  await send(client, config.channelId, { content: text });
   return text;
 }
 
@@ -68,7 +74,7 @@ export async function postFallBehindNudge(
   if (!text) {
     return null;
   }
-  await send(client, config.channelId, text);
+  await send(client, config.channelId, { content: text });
   return text;
 }
 
@@ -110,18 +116,63 @@ export async function postChannelMessages(
   messages: string[],
 ): Promise<void> {
   for (const text of messages) {
-    await send(client, channelId, text);
+    await send(client, channelId, { content: text });
   }
+}
+
+export async function postConnectReminders(
+  client: Client,
+  db: FinesseDb,
+  config: Config,
+  now = new Date(),
+): Promise<number> {
+  const due = db.listUnconnectedForNudge(now, CONNECT_NUDGE_GAP_MS);
+  if (due.length === 0) {
+    return 0;
+  }
+  const channelIds: string[] = [];
+  const buttons = [onboardButtons()];
+  for (const person of due) {
+    try {
+      const user = await client.users.fetch(person.discordId);
+      await user.send({ content: connectNudgeDm(), components: buttons });
+      db.markConnectNudge(person.discordId, now);
+    } catch {
+      channelIds.push(person.discordId);
+    }
+  }
+  const channelText = connectNudgeChannel(channelIds);
+  if (channelText) {
+    await send(client, config.channelId, {
+      content: channelText,
+      components: buttons,
+    });
+    for (const discordId of channelIds) {
+      db.markConnectNudge(discordId, now);
+    }
+  }
+  return due.length;
+}
+
+export async function postOnboardWelcome(
+  client: Client,
+  channelId: string,
+  content: string,
+): Promise<void> {
+  await send(client, channelId, {
+    content,
+    components: [onboardButtons()],
+  });
 }
 
 async function send(
   client: Client,
   channelId: string,
-  text: string,
+  payload: MessageCreateOptions,
 ): Promise<void> {
   const channel = await client.channels.fetch(channelId);
   if (!channel?.isTextBased() || !channel.isSendable() || channel.isDMBased()) {
     throw new Error(`Channel ${channelId} is not a guild text channel`);
   }
-  await channel.send(text);
+  await channel.send(payload);
 }

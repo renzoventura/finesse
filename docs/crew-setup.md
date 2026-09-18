@@ -2,7 +2,7 @@
 
 You do **not** run the bot. About 10 minutes. Garmin, Apple Watch, Amazfit, and Strava all go through [Intervals.icu](https://intervals.icu/) first. Finesse only talks to Intervals.
 
-Never paste your API key in the Discord channel. `/connect` opens a private popup.
+Never paste your API key in the Discord channel. `/join`, `/connect`, or the **Link Intervals.icu** button opens a private popup.
 
 ## Paste this in Discord
 
@@ -17,7 +17,7 @@ Crew setup (auto check-in)
    • Apple Watch without Strava → HealthFit app → Intervals.icu, auto-upload workouts
 3. Confirm a recent session is on your Intervals calendar
 4. Settings → Developer Settings → copy API key
-5. In this channel: /connect → paste the key in the popup (not in chat)
+5. In this channel: `/join` or `/connect`, or tap **Link Intervals.icu** — paste the key in the popup (not in chat)
 6. Next workout should ping here within ~15 minutes. If it never syncs: /done
 ```
 

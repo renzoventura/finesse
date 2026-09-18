@@ -1,7 +1,9 @@
 import {
   ActionRowBuilder,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
+  MessageFlags,
   type MessageReaction,
   ModalBuilder,
   type ModalSubmitInteraction,
@@ -19,7 +21,7 @@ import {
   coachUserPrompt,
 } from "../llm/prompts.js";
 import type { LlmProvider } from "../llm/types.js";
-import { postChannelMessages } from "../posts.js";
+import { postChannelMessages, postOnboardWelcome } from "../posts.js";
 import { oauthRedirectUri } from "../sources/create.js";
 import { ingestSource } from "../sources/ingest.js";
 import type { ActivitySource } from "../sources/types.js";
@@ -27,11 +29,21 @@ import { toLocalDate } from "../streaks.js";
 import {
   doneReply,
   joinReply,
+  onboardAlreadyLinked,
+  onboardDoneHint,
+  onboardLaterReply,
+  onboardLinkHint,
+  onboardPrivate,
+  onboardWatchSteps,
+  onboardWelcomeChannel,
   setupReply,
   statusMessage,
 } from "../templates.js";
+import { CONNECT_SNOOZE_MS, ONBOARD, onboardButtons } from "./onboard.js";
 
 export const CHECK_EMOJI = "✅";
+
+const hidden = { flags: MessageFlags.Ephemeral } as const;
 
 export type AppContext = {
   db: FinesseDb;
@@ -63,15 +75,34 @@ function statusOpts(ctx: AppContext, now = new Date()) {
   };
 }
 
+function inScope(ctx: AppContext, interaction: Interaction): boolean {
+  if (interaction.guildId === ctx.config.guildId) {
+    return true;
+  }
+  if (interaction.guildId) {
+    return false;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith("onboard:")) {
+    return true;
+  }
+  return (
+    interaction.isModalSubmit() && interaction.customId.startsWith("connect:")
+  );
+}
+
 async function onInteraction(
   ctx: AppContext,
   interaction: Interaction,
 ): Promise<void> {
-  if (interaction.guildId !== ctx.config.guildId) {
+  if (!inScope(ctx, interaction)) {
     return;
   }
 
   try {
+    if (interaction.isButton()) {
+      await handleOnboardButton(ctx, interaction);
+      return;
+    }
     if (interaction.isModalSubmit()) {
       await handleConnectModal(ctx, interaction);
       return;
@@ -109,19 +140,19 @@ async function onInteraction(
         ? interaction.commandName
         : interaction.isModalSubmit()
           ? interaction.customId
-          : "interaction",
+          : interaction.isButton()
+            ? interaction.customId
+            : "interaction",
       error,
     );
     const content = "Something broke. Try again in a moment.";
     if (interaction.isRepliable()) {
       if (interaction.deferred || interaction.replied) {
         await interaction
-          .followUp({ content, ephemeral: true })
+          .followUp({ content, ...hidden })
           .catch(() => undefined);
       } else {
-        await interaction
-          .reply({ content, ephemeral: true })
-          .catch(() => undefined);
+        await interaction.reply({ content, ...hidden }).catch(() => undefined);
       }
     }
   }
@@ -131,17 +162,38 @@ async function handleJoin(
   ctx: AppContext,
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const result = ctx.db.join(
+  const joined = ctx.db.join(
     interaction.user.id,
     displayName(interaction.user),
   );
-  await interaction.reply({
-    content: joinReply(
-      result.already,
+  if (!ctx.db.needsIntervals(interaction.user.id)) {
+    await interaction.reply({
+      content: joinReply(
+        joined.already,
+        ctx.config.channelId,
+        ctx.config.weeklyTarget,
+      ),
+      ...hidden,
+    });
+    return;
+  }
+  const postedInChannel = !joined.already;
+  if (postedInChannel) {
+    await postOnboardWelcome(
+      interaction.client,
       ctx.config.channelId,
-      ctx.config.weeklyTarget,
-    ),
-    ephemeral: true,
+      onboardWelcomeChannel(interaction.user.id),
+    );
+  }
+  await interaction.reply({
+    content: onboardPrivate({
+      already: joined.already,
+      weeklyTarget: ctx.config.weeklyTarget,
+      channelId: ctx.config.channelId,
+      postedInChannel,
+    }),
+    components: [onboardButtons()],
+    ...hidden,
   });
 }
 
@@ -152,10 +204,14 @@ async function handleDone(
   if (interaction.channelId !== ctx.config.channelId) {
     await interaction.reply({
       content: `Log sessions in <#${ctx.config.channelId}>.`,
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
+  const joined = ctx.db.join(
+    interaction.user.id,
+    displayName(interaction.user),
+  );
   const note = interaction.options.getString("note");
   const result = ctx.db.recordCheckin(
     interaction.user.id,
@@ -172,6 +228,24 @@ async function handleDone(
       weeklyTarget: profile?.weeklyTarget ?? ctx.config.weeklyTarget,
     }),
   });
+  if (!ctx.db.needsIntervals(interaction.user.id)) {
+    return;
+  }
+  if (!joined.already) {
+    await postOnboardWelcome(
+      interaction.client,
+      ctx.config.channelId,
+      onboardWelcomeChannel(interaction.user.id),
+    );
+    return;
+  }
+  if (!ctx.db.isConnectSnoozed(interaction.user.id, new Date())) {
+    await interaction.followUp({
+      content: onboardDoneHint(),
+      components: [onboardButtons()],
+      ...hidden,
+    });
+  }
 }
 
 async function handleStatus(
@@ -182,6 +256,7 @@ async function handleStatus(
   const you = status.people.find(
     (person) => person.discordId === interaction.user.id,
   );
+  const needsLink = ctx.db.needsIntervals(interaction.user.id);
   await interaction.reply({
     content: statusMessage({
       weekStart: status.weekStart,
@@ -190,7 +265,8 @@ async function handleStatus(
       you,
       people: status.people,
     }),
-    ephemeral: true,
+    components: needsLink ? [onboardButtons()] : [],
+    ...hidden,
   });
 }
 
@@ -207,7 +283,7 @@ async function handleSetup(
       content: existing
         ? setupReply(existing)
         : "Set `level`, `goal`, or `target`. Example: `/setup level:intermediate goal:5k target:3`",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
@@ -218,7 +294,7 @@ async function handleSetup(
   );
   await interaction.reply({
     content: setupReply(profile),
-    ephemeral: true,
+    ...hidden,
   });
 }
 
@@ -230,11 +306,11 @@ async function handleCoach(
     await interaction.reply({
       content:
         "Coach is off until an LLM is configured (`GEMINI_API_KEY` + `LLM_PROVIDER=gemini`).",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply(hidden);
   ctx.db.join(interaction.user.id, displayName(interaction.user));
   const now = new Date();
   const status = ctx.db.status(statusOpts(ctx, now));
@@ -259,21 +335,70 @@ async function handleCoach(
     }),
   });
   await interaction.editReply({ content: clipDiscord(text) });
+  if (
+    ctx.db.needsIntervals(interaction.user.id) &&
+    !ctx.db.isConnectSnoozed(interaction.user.id, now)
+  ) {
+    await interaction.followUp({
+      content: onboardLinkHint(),
+      components: [onboardButtons()],
+      ...hidden,
+    });
+  }
 }
 
 async function handleConnect(
   ctx: AppContext,
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
+  ctx.db.join(interaction.user.id, displayName(interaction.user));
+  await startConnect(ctx, interaction);
+}
+
+async function handleOnboardButton(
+  ctx: AppContext,
+  interaction: ButtonInteraction,
+): Promise<void> {
+  if (interaction.customId === ONBOARD.watch) {
+    await interaction.reply({
+      content: onboardWatchSteps(),
+      components: [onboardButtons()],
+      ...hidden,
+    });
+    return;
+  }
+  if (interaction.customId === ONBOARD.later) {
+    ctx.db.join(interaction.user.id, displayName(interaction.user));
+    ctx.db.snoozeConnect(
+      interaction.user.id,
+      new Date(Date.now() + CONNECT_SNOOZE_MS),
+    );
+    await interaction.reply({ content: onboardLaterReply(), ...hidden });
+    return;
+  }
+  if (interaction.customId !== ONBOARD.link) {
+    return;
+  }
+  ctx.db.join(interaction.user.id, displayName(interaction.user));
+  if (!ctx.db.needsIntervals(interaction.user.id)) {
+    await interaction.reply({ content: onboardAlreadyLinked(), ...hidden });
+    return;
+  }
+  await startConnect(ctx, interaction);
+}
+
+async function startConnect(
+  ctx: AppContext,
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+): Promise<void> {
   const source = ctx.sources.intervals;
   if (!source) {
     await interaction.reply({
       content: "Intervals.icu is not wired up on this bot.",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
-  ctx.db.join(interaction.user.id, displayName(interaction.user));
   if (source.auth === "api_key") {
     await interaction.showModal(apiKeyModal(source.id));
     return;
@@ -282,7 +407,7 @@ async function handleConnect(
     await interaction.reply({
       content:
         "Intervals OAuth needs `PUBLIC_URL` (the public https origin of this bot).",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
@@ -293,7 +418,7 @@ async function handleConnect(
   );
   await interaction.reply({
     content: `Connect **Intervals.icu** (opens in browser):\n${url}\n\nActivities that arrived in Intervals via Strava do not fire instant webhooks; the 15-minute pull still catches them.`,
-    ephemeral: true,
+    ...hidden,
   });
 }
 
@@ -309,7 +434,7 @@ async function handleConnectModal(
   if (source?.auth !== "api_key") {
     await interaction.reply({
       content: "Intervals.icu is not wired up on this bot.",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
@@ -318,12 +443,12 @@ async function handleConnectModal(
     await interaction.reply({
       content:
         "That doesn't look like an Intervals.icu API key. Copy it from Settings → Developer Settings.",
-      ephemeral: true,
+      ...hidden,
     });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply(hidden);
   ctx.db.join(interaction.user.id, displayName(interaction.user));
   try {
     const tokens = await source.verifyApiKey(apiKey);
@@ -337,7 +462,7 @@ async function handleConnectModal(
     console.error("[connect]", source.id, error);
     await interaction.editReply({
       content:
-        "Intervals.icu rejected that key. In [intervals.icu](https://intervals.icu/) go to **Settings → Developer Settings**, copy the API key, and run `/connect` again. Don't paste it in the channel.",
+        "Intervals.icu rejected that key. In [intervals.icu](https://intervals.icu/) go to **Settings → Developer Settings**, copy the API key, and tap **Link Intervals.icu** again. Don't paste it in the channel.",
     });
     return;
   }
@@ -409,6 +534,7 @@ async function onReaction(
       return;
     }
 
+    const joined = ctx.db.join(fullUser.id, displayName(fullUser));
     const now = new Date();
     const result = ctx.db.recordCheckin(
       fullUser.id,
@@ -429,6 +555,13 @@ async function onReaction(
     if (channel.isSendable()) {
       await channel.send(
         `Logged **${displayName(fullUser)}** — **${result.checkinsThisWeek}/${profile?.weeklyTarget ?? ctx.config.weeklyTarget}** this week.`,
+      );
+    }
+    if (!joined.already && ctx.db.needsIntervals(fullUser.id)) {
+      await postOnboardWelcome(
+        reaction.client,
+        ctx.config.channelId,
+        onboardWelcomeChannel(fullUser.id),
       );
     }
   } catch (error) {

@@ -3,7 +3,7 @@ import { ApplicationCommandOptionType } from "discord.js";
 export const commands = [
   {
     name: "join",
-    description: "Opt into the weekly training crew",
+    description: "Opt into the crew and start linking Intervals.icu",
     dm_permission: false,
   },
   {

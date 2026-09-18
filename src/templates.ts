@@ -54,7 +54,9 @@ export function statusMessage(input: {
     : "You are not in the crew yet. `/join` or `/done` to opt in.\n";
   const linked = input.you?.sources.length
     ? `Sources: ${input.you.sources.join(", ")}\n`
-    : "";
+    : input.you
+      ? "Intervals is not linked — tap **Link Intervals.icu** or `/connect` so workouts auto-post.\n"
+      : "";
   const crew =
     input.people.length === 0
       ? "No one has joined yet."
@@ -89,6 +91,96 @@ export function joinReply(
     return `You're already in the crew. Log a session with \`/done\` or ✅ in <#${channelId}>.`;
   }
   return `You're in. Target is ${weeklyTarget} sessions this week. Log with \`/done\` or ✅ in <#${channelId}>.`;
+}
+
+export function onboardWelcomeChannel(discordId: string): string {
+  return [
+    `**Welcome <@${discordId}>.** You're in the crew.`,
+    "",
+    "Workouts ping this channel on their own once [Intervals.icu](https://intervals.icu/) can see your watch (Garmin, Amazfit, Apple Watch, or Strava).",
+    "",
+    "**Once:**",
+    "1. Free account → https://intervals.icu/signup",
+    "2. Settings → connect your watch",
+    "3. Settings → Developer Settings → copy the API key",
+    "4. Tap **Link Intervals.icu** — paste in the popup, never in chat",
+    "",
+    "`/done` still counts until that's done.",
+  ].join("\n");
+}
+
+export function onboardPrivate(input: {
+  already: boolean;
+  weeklyTarget: number;
+  channelId: string;
+  postedInChannel: boolean;
+}): string {
+  const header = input.already
+    ? "You're in the crew — Intervals.icu is still not linked, so watches won't auto-post."
+    : `You're in. Target is **${input.weeklyTarget}** sessions this week.`;
+  const posted = input.postedInChannel
+    ? `I posted the steps in <#${input.channelId}> too.\n\n`
+    : "";
+  return [
+    header,
+    "",
+    `${posted}**Link Intervals.icu (about 5 minutes):**`,
+    "1. https://intervals.icu/signup",
+    "2. Connect your watch under Settings",
+    "3. Copy the API key from Settings → Developer Settings",
+    "4. Tap **Link Intervals.icu** below — the key stays private",
+    "",
+    `Garmin, Amazfit, Strava, and Apple Watch all go through Intervals. Indoor / missed sync: \`/done\` in <#${input.channelId}>.`,
+  ].join("\n");
+}
+
+export function onboardWatchSteps(): string {
+  return [
+    "**Connect the watch on Intervals, not in Discord.**",
+    "",
+    "• **Garmin** — [Settings](https://intervals.icu/settings) → Garmin Connect → tick download activities. Calendar should show workouts, not just wellness.",
+    "• **Amazfit** — Amazfit / Zepp box → same Zepp login as the phone app → tick download workouts. Sync in Zepp first.",
+    "• **Strava** — Strava box → tick download activities. If Garmin is already the source, turn Strava download **off** (duplicates).",
+    "• **Apple Watch** — no native login. Apple → Strava → Intervals, or [HealthFit](https://apps.apple.com/us/app/healthfit/id1202650514) → Intervals, auto-upload workouts.",
+    "",
+    "When a session is on the Intervals calendar, tap **Link Intervals.icu** and paste the API key. Never drop the key in the channel.",
+  ].join("\n");
+}
+
+export function onboardLaterReply(): string {
+  return "All good. `/done` and ✅ still count. I'll remind you in a couple of days to link Intervals so the crew sees sessions automatically.";
+}
+
+export function onboardAlreadyLinked(): string {
+  return "Intervals.icu is already linked. New sessions ping the crew channel within about 15 minutes. Missed sync: `/done`.";
+}
+
+export function onboardDoneHint(): string {
+  return "Logged. Link **Intervals.icu** so the next one posts itself (Garmin / Amazfit / Apple / Strava). Tap below — the API key stays private.";
+}
+
+export function onboardLinkHint(): string {
+  return "Link **Intervals.icu** so workouts post themselves. Tap below — the API key stays private.";
+}
+
+export function connectNudgeDm(): string {
+  return [
+    "Finesse still doesn't have your Intervals.icu key, so workouts won't show up in the crew channel on their own.",
+    "",
+    "Account → connect watch → copy API key (Settings → Developer) → tap **Link Intervals.icu**. Don't paste the key in the server.",
+  ].join("\n");
+}
+
+export function connectNudgeChannel(discordIds: string[]): string | null {
+  if (discordIds.length === 0) {
+    return null;
+  }
+  const mentions = discordIds.map((id) => `<@${id}>`).join(" ");
+  return [
+    `${mentions} — still need **Intervals.icu** so sessions auto-post here.`,
+    "",
+    "Tap **Link Intervals.icu** (API key stays in the popup). Watch setup is the other button. `/done` works in the meantime.",
+  ].join("\n");
 }
 
 export function autoCheckinNotice(input: {

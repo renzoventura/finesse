@@ -122,6 +122,15 @@ export function openDb(path: string) {
       upsertSourceAccount(db, account),
     listSourceAccounts: (source: string) => listSourceAccounts(db, source),
     connectedSources: (discordId: string) => connectedSources(db, discordId),
+    needsIntervals: (discordId: string) => needsIntervals(db, discordId),
+    isConnectSnoozed: (discordId: string, now: Date) =>
+      isConnectSnoozed(db, discordId, now),
+    snoozeConnect: (discordId: string, until: Date) =>
+      snoozeConnect(db, discordId, until),
+    markConnectNudge: (discordId: string, now: Date) =>
+      markConnectNudge(db, discordId, now),
+    listUnconnectedForNudge: (now: Date, gapMs: number) =>
+      listUnconnectedForNudge(db, now, gapMs),
     claimSourceWorkout: (row: {
       source: string;
       externalId: string;
@@ -187,6 +196,8 @@ function migrate(db: Sqlite): void {
   ensureColumn(db, "users", "base_level", "TEXT");
   ensureColumn(db, "users", "goal", "TEXT");
   ensureColumn(db, "checkins", "source", "TEXT NOT NULL DEFAULT 'manual'");
+  ensureColumn(db, "users", "connect_snooze_until", "TEXT");
+  ensureColumn(db, "users", "connect_nudged_at", "TEXT");
 }
 
 function ensureColumn(
@@ -428,6 +439,61 @@ function connectedSources(db: Sqlite, discordId: string): string[] {
   return rows.map((row) => row.source);
 }
 
+function needsIntervals(db: Sqlite, discordId: string): boolean {
+  const user = db
+    .prepare("SELECT opted_in FROM users WHERE discord_id = ?")
+    .get(discordId) as OptedRow | undefined;
+  if (user?.opted_in !== 1) {
+    return false;
+  }
+  return connectedSources(db, discordId).length === 0;
+}
+
+function isConnectSnoozed(db: Sqlite, discordId: string, now: Date): boolean {
+  const row = db
+    .prepare("SELECT connect_snooze_until FROM users WHERE discord_id = ?")
+    .get(discordId) as { connect_snooze_until: string | null } | undefined;
+  if (!row?.connect_snooze_until) {
+    return false;
+  }
+  return row.connect_snooze_until > now.toISOString();
+}
+
+function snoozeConnect(db: Sqlite, discordId: string, until: Date): void {
+  db.prepare(
+    "UPDATE users SET connect_snooze_until = ? WHERE discord_id = ?",
+  ).run(until.toISOString(), discordId);
+}
+
+function markConnectNudge(db: Sqlite, discordId: string, now: Date): void {
+  db.prepare("UPDATE users SET connect_nudged_at = ? WHERE discord_id = ?").run(
+    now.toISOString(),
+    discordId,
+  );
+}
+
+function listUnconnectedForNudge(
+  db: Sqlite,
+  now: Date,
+  gapMs: number,
+): Array<{ discordId: string; name: string }> {
+  const nowIso = now.toISOString();
+  const nudgedCutoff = new Date(now.getTime() - gapMs).toISOString();
+  return db
+    .prepare(
+      `SELECT u.discord_id AS discordId, u.name AS name
+       FROM users u
+       WHERE u.opted_in = 1
+         AND NOT EXISTS (
+           SELECT 1 FROM source_accounts sa WHERE sa.user_id = u.discord_id
+         )
+         AND (u.connect_snooze_until IS NULL OR u.connect_snooze_until <= ?)
+         AND (u.connect_nudged_at IS NULL OR u.connect_nudged_at <= ?)
+       ORDER BY u.name COLLATE NOCASE`,
+    )
+    .all(nowIso, nudgedCutoff) as Array<{ discordId: string; name: string }>;
+}
+
 function toPerson(
   db: Sqlite,
   user: UserRow,
@@ -515,6 +581,9 @@ function upsertSourceAccount(db: Sqlite, account: SourceAccount): void {
     refreshToken: account.refreshToken,
     expiresAt: account.expiresAt,
   });
+  db.prepare(
+    "UPDATE users SET connect_snooze_until = NULL WHERE discord_id = ?",
+  ).run(account.discordId);
 }
 
 function listSourceAccounts(db: Sqlite, source: string): SourceAccount[] {

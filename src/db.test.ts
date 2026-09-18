@@ -166,3 +166,43 @@ describe("monday catch-up", () => {
     db.close();
   });
 });
+
+describe("Intervals onboarding", () => {
+  it("lists opted-in people who have not linked a source", () => {
+    const db = tempDb();
+    db.join("u1", "Renzo");
+    db.join("u2", "Saish");
+    db.upsertSourceAccount({
+      discordId: "u1",
+      name: "Renzo",
+      source: "intervals",
+      externalId: "i1",
+      accessToken: "k",
+      refreshToken: "api_key",
+      expiresAt: 0,
+    });
+    const now = new Date("2026-09-08T00:00:00.000Z");
+    const due = db.listUnconnectedForNudge(now, 20 * 60 * 60 * 1000);
+    expect(due.map((row) => row.discordId)).toEqual(["u2"]);
+    expect(db.needsIntervals("u1")).toBe(false);
+    expect(db.needsIntervals("u2")).toBe(true);
+    db.close();
+  });
+
+  it("skips snoozed members and recently nudged members", () => {
+    const db = tempDb();
+    db.join("u2", "Saish");
+    const now = new Date("2026-09-08T10:00:00.000Z");
+    db.snoozeConnect("u2", new Date("2026-09-10T10:00:00.000Z"));
+    expect(db.isConnectSnoozed("u2", now)).toBe(true);
+    expect(db.listUnconnectedForNudge(now, 20 * 60 * 60 * 1000)).toEqual([]);
+    db.snoozeConnect("u2", new Date("2026-09-07T00:00:00.000Z"));
+    db.markConnectNudge("u2", new Date("2026-09-08T08:00:00.000Z"));
+    expect(db.listUnconnectedForNudge(now, 20 * 60 * 60 * 1000)).toEqual([]);
+    db.markConnectNudge("u2", new Date("2026-09-07T00:00:00.000Z"));
+    expect(db.listUnconnectedForNudge(now, 20 * 60 * 60 * 1000)).toEqual([
+      { discordId: "u2", name: "Saish" },
+    ]);
+    db.close();
+  });
+});

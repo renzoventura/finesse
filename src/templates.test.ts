@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { StatusPerson } from "./db.js";
 import {
   autoCheckinNotice,
+  connectNudgeChannel,
   fallBehindNudge,
   formatWorkoutLabel,
+  onboardWelcomeChannel,
   sundaySummary,
 } from "./templates.js";
 
@@ -84,5 +86,18 @@ describe("templates", () => {
         movingTimeSec: 1920,
       }),
     ).toBe("Run — Easy · 5.2 km · 32 min");
+  });
+
+  it("welcomes a new member with Intervals steps", () => {
+    const text = onboardWelcomeChannel("u1");
+    expect(text).toContain("<@u1>");
+    expect(text).toContain("intervals.icu/signup");
+    expect(text).toContain("Link Intervals.icu");
+  });
+
+  it("mentions unlinked members in the daily connect nudge", () => {
+    expect(connectNudgeChannel([])).toBeNull();
+    expect(connectNudgeChannel(["a", "b"])).toContain("<@a>");
+    expect(connectNudgeChannel(["a", "b"])).toContain("<@b>");
   });
 });

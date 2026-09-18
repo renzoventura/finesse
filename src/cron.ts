@@ -5,6 +5,7 @@ import type { FinesseDb } from "./db.js";
 import type { LlmProvider } from "./llm/types.js";
 import {
   postChannelMessages,
+  postConnectReminders,
   postFallBehindNudge,
   postSundaySummary,
 } from "./posts.js";
@@ -57,6 +58,19 @@ export function startCron(
     wrap("sunday-summary", async () => {
       await postSundaySummary(client, db, config, llm);
       console.log("[cron] sunday summary posted");
+    }),
+    { timezone },
+  );
+
+  schedule(
+    "0 10 * * *",
+    wrap("connect-nudge", async () => {
+      const n = await postConnectReminders(client, db, config);
+      console.log(
+        n
+          ? `[cron] connect nudge sent to ${n} member(s)`
+          : "[cron] connect nudge skipped",
+      );
     }),
     { timezone },
   );
