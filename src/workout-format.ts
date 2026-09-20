@@ -281,11 +281,17 @@ function collapseIntervals(intervals: WorkoutInterval[]): string[] {
     ) {
       let reps = 0;
       let cursor = index;
-      while (
-        cursor + 1 < intervals.length &&
-        similarInterval(intervals[cursor], work) &&
-        similarInterval(intervals[cursor + 1], rest)
-      ) {
+      while (cursor + 1 < intervals.length) {
+        const left = intervals[cursor];
+        const right = intervals[cursor + 1];
+        if (
+          !left ||
+          !right ||
+          !similarInterval(left, work) ||
+          !similarInterval(right, rest)
+        ) {
+          break;
+        }
         reps += 1;
         cursor += 2;
       }
