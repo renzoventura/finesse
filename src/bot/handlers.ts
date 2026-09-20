@@ -24,7 +24,8 @@ import type { LlmProvider } from "../llm/types.js";
 import {
   postChannelMessages,
   postOnboardWelcome,
-  renderSaturdayUpdate,
+  renderDailyUpdate,
+  renderSundaySummary,
 } from "../posts.js";
 import { oauthRedirectUri } from "../sources/create.js";
 import { ingestSource } from "../sources/ingest.js";
@@ -124,6 +125,10 @@ async function onInteraction(
     }
     if (interaction.commandName === "status") {
       await handleStatus(ctx, interaction);
+      return;
+    }
+    if (interaction.commandName === "daily") {
+      await handleDaily(ctx, interaction);
       return;
     }
     if (interaction.commandName === "week") {
@@ -278,11 +283,11 @@ async function handleStatus(
   });
 }
 
-async function handleWeek(
+async function handleDaily(
   ctx: AppContext,
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const text = renderSaturdayUpdate(ctx.db, ctx.config);
+  const text = renderDailyUpdate(ctx.db, ctx.config);
   if (!text) {
     await interaction.reply({
       content: "Nobody has joined the crew yet. `/join` or `/done` to get in.",
@@ -291,6 +296,15 @@ async function handleWeek(
     return;
   }
   await interaction.reply({ content: text });
+}
+
+async function handleWeek(
+  ctx: AppContext,
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  await interaction.reply({
+    content: clipDiscord(renderSundaySummary(ctx.db, ctx.config)),
+  });
 }
 
 async function handleSetup(

@@ -6,8 +6,7 @@ import type { LlmProvider } from "./llm/types.js";
 import {
   postChannelMessages,
   postConnectReminders,
-  postFallBehindNudge,
-  postSaturdayUpdate,
+  postDailyUpdate,
   postSundaySummary,
 } from "./posts.js";
 import { ingestAllSources } from "./sources/ingest.js";
@@ -55,10 +54,21 @@ export function startCron(
   );
 
   schedule(
-    "0 22 * * 0",
-    wrap("sunday-summary", async () => {
+    "0 19 * * 1-6",
+    wrap("daily-board", async () => {
+      const text = await postDailyUpdate(client, db, config);
+      console.log(
+        text ? "[cron] daily board posted" : "[cron] daily board skipped",
+      );
+    }),
+    { timezone },
+  );
+
+  schedule(
+    "0 19 * * 0",
+    wrap("sunday-recap", async () => {
       await postSundaySummary(client, db, config, llm);
-      console.log("[cron] sunday summary posted");
+      console.log("[cron] sunday recap posted");
     }),
     { timezone },
   );
@@ -71,30 +81,6 @@ export function startCron(
         n
           ? `[cron] connect nudge sent to ${n} member(s)`
           : "[cron] connect nudge skipped",
-      );
-    }),
-    { timezone },
-  );
-
-  schedule(
-    "0 19 * * 4",
-    wrap("thursday-nudge", async () => {
-      const text = await postFallBehindNudge(client, db, config, 1);
-      console.log(
-        text ? "[cron] thursday nudge posted" : "[cron] thursday nudge skipped",
-      );
-    }),
-    { timezone },
-  );
-
-  schedule(
-    "0 19 * * 6",
-    wrap("saturday-nudge", async () => {
-      const text = await postSaturdayUpdate(client, db, config);
-      console.log(
-        text
-          ? "[cron] saturday update posted"
-          : "[cron] saturday update skipped",
       );
     }),
     { timezone },

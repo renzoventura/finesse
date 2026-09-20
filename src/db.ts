@@ -113,6 +113,7 @@ export function openDb(path: string) {
     ) => recordCheckin(db, discordId, name, note, opts),
     weekCheckins: (discordId: string, weekStart: string) =>
       weekCheckins(db, discordId, weekStart),
+    weekWorkouts: (weekStart: string) => weekWorkouts(db, weekStart),
     status: (opts: { now: Date; timeZone: string; weeklyTarget: number }) =>
       weekStatus(db, opts),
     createOauthState: (discordId: string, source: string) =>
@@ -293,6 +294,20 @@ function weekCheckins(
        ORDER BY checkin_date`,
     )
     .all(discordId, weekStart, end) as CheckinRow[];
+}
+
+export type WeekWorkout = CheckinRow & { userId: string };
+
+function weekWorkouts(db: Sqlite, weekStart: string): WeekWorkout[] {
+  const end = addDays(weekStart, 7);
+  return db
+    .prepare(
+      `SELECT user_id AS userId, checkin_date AS date, note, source
+       FROM source_workouts
+       WHERE checkin_date >= ? AND checkin_date < ?
+       ORDER BY checkin_date, seen_at`,
+    )
+    .all(weekStart, end) as WeekWorkout[];
 }
 
 function catchUp(

@@ -1,53 +1,64 @@
 import type { CheckinRow, StatusPerson } from "./db.js";
 import { addDays, formatShortDate, sundayOf } from "./streaks.js";
+import { WORKOUT_KINDS, workoutKind } from "./workout-kinds.js";
 
 function targetOf(person: { weeklyTarget?: number }, fallback: number): number {
   return person.weeklyTarget ?? fallback;
 }
 
-export function sundaySummary(input: {
-  weekStart: string;
-  groupStreak: number;
-  people: StatusPerson[];
-}): string {
-  const header = `**Week of ${formatShortDate(input.weekStart)} – ${formatShortDate(sundayOf(input.weekStart))}**`;
-  if (input.people.length === 0) {
-    return `${header}\n\nNobody has joined the crew yet. Use \`/join\` or \`/done\` to get in.\n\n🔥 Group streak: ${input.groupStreak}`;
-  }
-  const lines = input.people.map((person) => {
-    const mark = person.hit ? "✅" : "❌";
-    return `• **${person.name}** — ${person.checkins}/${person.weeklyTarget} ${mark} (streak ${person.currentStreak})`;
-  });
-  const weeks = input.groupStreak === 1 ? "week" : "weeks";
-  return `${header}\n\n${lines.join("\n")}\n\n🔥 Group streak: ${input.groupStreak} ${weeks}`;
-}
-
-export type SaturdayPerson = StatusPerson & {
+export type CrewBoardPerson = StatusPerson & {
   sessions: CheckinRow[];
 };
 
-export function saturdayUpdate(input: {
+export function mergeWeekSessions(
+  checkins: CheckinRow[],
+  workouts: CheckinRow[],
+): CheckinRow[] {
+  const covered = new Set(workouts.map((row) => row.date));
+  const extras = checkins.filter((row) => !covered.has(row.date));
+  return [...workouts, ...extras].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function sundaySummary(input: {
   weekStart: string;
   groupStreak: number;
-  people: SaturdayPerson[];
+  people: CrewBoardPerson[];
+}): string {
+  const header = `**Week recap** (${formatShortDate(input.weekStart)} – ${formatShortDate(sundayOf(input.weekStart))})`;
+  if (input.people.length === 0) {
+    return `${header}\n\nNobody has joined the crew yet. Use \`/join\` or \`/done\` to get in.\n\n🔥 Group streak: ${input.groupStreak}`;
+  }
+  const weeks = input.groupStreak === 1 ? "week" : "weeks";
+  const blocks = input.people.map((person) => {
+    const mark = person.hit ? "✅" : "❌";
+    return `<@${person.discordId}> — **${person.checkins}/${person.weeklyTarget}** ${mark} (streak ${person.currentStreak})\n${sessionLines(person.sessions)}`;
+  });
+  return [
+    header,
+    "",
+    weekStory(input.people),
+    "",
+    ...leaderLines(input.people),
+    "",
+    blocks.join("\n\n"),
+    "",
+    `🔥 Group streak: ${input.groupStreak} ${weeks}`,
+  ].join("\n");
+}
+
+export function dailyUpdate(input: {
+  weekStart: string;
+  groupStreak: number;
+  people: CrewBoardPerson[];
   today: string;
 }): string | null {
   if (input.people.length === 0) {
     return null;
   }
   const daysLeft = daysLeftInclusive(input.today, input.weekStart);
-  const header = `**This week** (${formatShortDate(input.weekStart)} – ${formatShortDate(sundayOf(input.weekStart))})`;
+  const header = `**Daily** (${formatShortDate(input.weekStart)} – ${formatShortDate(sundayOf(input.weekStart))})`;
   const blocks = input.people.map((person) => {
-    const sessions =
-      person.sessions.length === 0
-        ? "  • no days logged yet"
-        : person.sessions
-            .map(
-              (session) =>
-                `  • ${formatShortDate(session.date)} — ${sessionLabel(session)}`,
-            )
-            .join("\n");
-    return `<@${person.discordId}> — **${person.checkins}/${person.weeklyTarget}** · ${weekPace(person, daysLeft)}\n${sessions}`;
+    return `<@${person.discordId}> — **${person.checkins}/${person.weeklyTarget}** · ${weekPace(person, daysLeft)}\n${sessionLines(person.sessions)}`;
   });
   const weeks = input.groupStreak === 1 ? "week" : "weeks";
   return `${header}\n\n${blocks.join("\n\n")}\n\n🔥 Group streak: ${input.groupStreak} ${weeks}\nThrough Sunday.`;
@@ -82,6 +93,72 @@ function sessionLabel(session: CheckinRow): string {
     return note;
   }
   return session.source === "manual" ? "logged" : session.source;
+}
+
+function sessionLines(sessions: CheckinRow[]): string {
+  if (sessions.length === 0) {
+    return "  • no days logged yet";
+  }
+  return sessions
+    .map(
+      (session) =>
+        `  • ${formatShortDate(session.date)} — ${sessionLabel(session)}`,
+    )
+    .join("\n");
+}
+
+function weekStory(people: CrewBoardPerson[]): string {
+  const sessions = people.reduce((n, person) => n + person.sessions.length, 0);
+  const hit = people.filter((person) => person.hit).length;
+  const n = people.length;
+  if (sessions === 0) {
+    return "Quiet week — no sessions on the board. `/done` or sync Intervals if you trained.";
+  }
+  if (hit === n) {
+    return `Everyone hit their target. **${sessions}** sessions between you. Talk it out — what actually worked?`;
+  }
+  if (hit === 0) {
+    return `Nobody hit their target. Still **${sessions}** sessions on the board. What do you want next week to look like?`;
+  }
+  return `**${hit}/${n}** hit their target. **${sessions}** sessions this week. Call out a favourite.`;
+}
+
+function leaderLines(people: CrewBoardPerson[]): string[] {
+  const overall = mentionTop(
+    people.map((person) => ({
+      discordId: person.discordId,
+      count: person.sessions.length,
+    })),
+  );
+  const lines: string[] = [];
+  if (overall) {
+    lines.push(`Most sessions: ${overall}`);
+  }
+  for (const kind of WORKOUT_KINDS) {
+    const top = mentionTop(
+      people.map((person) => ({
+        discordId: person.discordId,
+        count: person.sessions.filter(
+          (session) => workoutKind(session.note, session.source) === kind,
+        ).length,
+      })),
+    );
+    if (top) {
+      lines.push(`${kind}: ${top}`);
+    }
+  }
+  return lines;
+}
+
+function mentionTop(
+  scores: Array<{ discordId: string; count: number }>,
+): string | null {
+  const max = Math.max(0, ...scores.map((row) => row.count));
+  if (max <= 0) {
+    return null;
+  }
+  const winners = scores.filter((row) => row.count === max);
+  return `${winners.map((row) => `<@${row.discordId}>`).join(" and ")} (${max})`;
 }
 
 export function fallBehindNudge(input: {

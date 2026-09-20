@@ -2,18 +2,20 @@ import { describe, expect, it } from "vitest";
 import type { CheckinRow, StatusPerson } from "./db.js";
 import {
   autoCheckinNotice,
+  type CrewBoardPerson,
   connectNudgeChannel,
+  dailyUpdate,
   fallBehindNudge,
   formatWorkoutLabel,
+  mergeWeekSessions,
   onboardWelcomeChannel,
-  type SaturdayPerson,
-  saturdayUpdate,
   sundaySummary,
 } from "./templates.js";
 
 function person(
-  overrides: Partial<SaturdayPerson> & Pick<StatusPerson, "discordId" | "name">,
-): SaturdayPerson {
+  overrides: Partial<CrewBoardPerson> &
+    Pick<StatusPerson, "discordId" | "name">,
+): CrewBoardPerson {
   return {
     currentStreak: 0,
     checkins: 0,
@@ -28,30 +30,56 @@ function person(
 }
 
 describe("templates", () => {
-  it("formats a Sunday summary", () => {
+  it("formats a Sunday recap with leaders by workout kind", () => {
     const text = sundaySummary({
       weekStart: "2026-09-14",
       groupStreak: 2,
       people: [
         person({
-          discordId: "1",
+          discordId: "renzo",
           name: "Renzo",
           currentStreak: 4,
           checkins: 3,
           hit: true,
+          sessions: [
+            {
+              date: "2026-09-15",
+              note: "Run — Easy · 5.2 km",
+              source: "intervals",
+            },
+            {
+              date: "2026-09-16",
+              note: "Ride — Cycling",
+              source: "intervals",
+            },
+            { date: "2026-09-18", note: "run", source: "manual" },
+          ],
         }),
         person({
-          discordId: "2",
+          discordId: "saish",
           name: "Saish",
           currentStreak: 0,
           checkins: 1,
           hit: false,
+          sessions: [
+            {
+              date: "2026-09-18",
+              note: "HighIntensityIntervalTraining — HIIT · 20 min",
+              source: "intervals",
+            },
+          ],
         }),
       ],
     });
-    expect(text).toContain("Renzo");
+    expect(text).toContain("Week recap");
+    expect(text).toContain("<@renzo>");
+    expect(text).toContain("<@saish>");
     expect(text).toContain("3/3");
-    expect(text).toContain("Saish");
+    expect(text).toContain("Most sessions: <@renzo> (3)");
+    expect(text).toContain("Run: <@renzo> (2)");
+    expect(text).toContain("Cycle: <@renzo> (1)");
+    expect(text).toContain("HIIT: <@saish> (1)");
+    expect(text).toContain("**1/2** hit their target");
     expect(text).toContain("Group streak: 2 weeks");
   });
 
@@ -68,8 +96,8 @@ describe("templates", () => {
     expect(text).toContain("0/3");
   });
 
-  it("pings the whole crew on Saturday, including people on pace", () => {
-    const text = saturdayUpdate({
+  it("pings the whole crew on the daily board", () => {
+    const text = dailyUpdate({
       weekStart: "2026-09-14",
       groupStreak: 0,
       today: "2026-09-19",
@@ -97,25 +125,46 @@ describe("templates", () => {
         }),
       ],
     });
+    expect(text).toContain("**Daily**");
     expect(text).toContain("<@saish>");
     expect(text).toContain("<@renzo>");
     expect(text).toContain("2/3");
     expect(text).toContain("needs 1 more · 2 days left");
     expect(text).toContain("HIIT · 20 min");
     expect(text).toContain("logged");
-    expect(text).toContain("1/3");
-    expect(text).toContain("needs 2 more · 2 days left");
   });
 
-  it("skips Saturday when nobody has joined", () => {
+  it("skips daily when nobody has joined", () => {
     expect(
-      saturdayUpdate({
+      dailyUpdate({
         weekStart: "2026-09-14",
         groupStreak: 0,
         today: "2026-09-19",
         people: [],
       }),
     ).toBeNull();
+  });
+
+  it("keeps extra Intervals sessions on a day that already has a check-in", () => {
+    const merged = mergeWeekSessions(
+      [
+        {
+          date: "2026-09-18",
+          note: "HighIntensityIntervalTraining — HIIT · 20 min",
+          source: "intervals",
+        },
+      ],
+      [
+        {
+          date: "2026-09-18",
+          note: "HighIntensityIntervalTraining — HIIT · 20 min",
+          source: "intervals",
+        },
+        { date: "2026-09-18", note: "Run — Easy", source: "intervals" },
+      ],
+    );
+    expect(merged).toHaveLength(2);
+    expect(merged.map((row) => row.note).join(" ")).toContain("Run");
   });
 
   it("announces an auto check-in with a mention", () => {

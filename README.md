@@ -6,7 +6,7 @@ Product: [docs/prd.md](docs/prd.md). How it is built: [docs/architecture.md](doc
 
 ## What it does
 
-- **One crew channel.** Check-ins, workout pings, Thursday/Saturday nudges, and the Sunday summary all live there.
+- **One crew channel.** Check-ins, workout pings, the 19:00 daily board, and the Sunday recap all live there.
 - **3× per week, one day each.** A second session the same local day still announces in chat; it does not become 2/3 until a new calendar day (`TZ`, default `Australia/Sydney`).
 - **Auto from watches.** `/connect` links [Intervals.icu](https://intervals.icu/). Garmin, Amazfit, Strava, and Apple Watch all sync **into Intervals** (not into Finesse). Indoor / missed sync: `/done`. Friends: [crew setup](docs/crew-setup.md).
 - **Every new workout pings the channel.** Details first (type, name, distance, time), weekly count after:
@@ -124,7 +124,7 @@ pnpm test
 pnpm dev
 ```
 
-In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/week` posts the crew board for everyone. `/status` is private. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu. Send friends [docs/crew-setup.md](docs/crew-setup.md).
+In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/daily` posts the crew board; `/week` posts the recap. `/status` is private. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu. Send friends [docs/crew-setup.md](docs/crew-setup.md).
 
 Cron does not fire if this laptop sleeps. Use Railway for the real crew.
 
@@ -165,7 +165,7 @@ Open [your PUBLIC_URL]/webhooks/intervals in a browser — it should say `ok` on
 
 ## Gemini coach (optional)
 
-Set `GEMINI_API_KEY` (and optionally `LLM_PROVIDER=gemini`, `GEMINI_MODEL`). `/setup` stores level, goal, and weekly target. `/coach` is ephemeral. Sunday 22:00 uses Gemini when the key is present, otherwise the template in `src/templates.ts`. Set `LLM_PROVIDER=none` to turn the coach off.
+Set `GEMINI_API_KEY` (and optionally `LLM_PROVIDER=gemini`, `GEMINI_MODEL`). `/setup` stores level, goal, and weekly target. `/coach` is ephemeral. Sunday 19:00 recap uses Gemini for one opening line when the key is present, otherwise the template in `src/templates.ts`. Set `LLM_PROVIDER=none` to turn the coach off.
 
 ## Privacy
 
@@ -181,7 +181,8 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 - `/join` — opt in and start Intervals.icu setup
 - `/done [note]` — log today (in the crew channel)
 - `/status` — this week and streaks (only you see it)
-- `/week` — post the crew board in the channel (pings everyone)
+- `/daily` — post the crew board in the channel (pings everyone)
+- `/week` — post the weekly recap (who led run / gym / cycle / HIIT / …)
 - `/setup` — level, goal, weekly target (feeds the coach)
 - `/coach` — private session suggestion
 - `/connect` — link Intervals.icu (API key, or OAuth when the app is approved)
@@ -194,9 +195,8 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 - Every 15 minutes — same pull
 - 10:00 — remind anyone who joined but has not linked Intervals.icu
 - Garmin → Intervals webhook — same ping, if OAuth + `PUBLIC_URL` are configured
-- Thu 19:00 — check on anyone with 0 this week
-- Sat 19:00 — ping the whole crew with this week’s board (who’s done, who needs Sunday)
-- Sun 22:00 — weekly summary (LLM if configured, else template)
+- Mon–Sat 19:00 — `/daily` board (everyone, sessions so far, who still needs days)
+- Sun 19:00 — `/week` recap (how the week went, session list, leaders by workout kind)
 - Mon 00:00 — streak roll
 
 Post immediately (needs a running bot, or `--dry` to print only):

@@ -25,8 +25,13 @@ export const commands = [
     dm_permission: false,
   },
   {
+    name: "daily",
+    description: "Post the daily crew board in the channel",
+    dm_permission: false,
+  },
+  {
     name: "week",
-    description: "Post this week's crew board in the channel",
+    description: "Post the weekly recap in the channel",
     dm_permission: false,
   },
   {

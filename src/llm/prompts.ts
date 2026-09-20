@@ -1,6 +1,3 @@
-import type { StatusPerson } from "../db.js";
-import { sundaySummary } from "../templates.js";
-
 export function coachSystemPrompt(): string {
   return [
     "You are Finesse, a concise fitness coach for a small training crew.",
@@ -43,23 +40,15 @@ export function coachUserPrompt(input: {
 
 export function weeklyReportSystemPrompt(): string {
   return [
-    "Rewrite this Discord weekly training summary with a bit of warmth.",
-    "Keep every count, name, and streak number exactly the same.",
-    "Add one short encouragement line per person.",
-    "Keep Discord markdown. No extra sections. Under 1500 characters.",
+    "You are posting a Discord weekly recap for a small training crew.",
+    "Keep every @mention, count, leader line, and session line exactly the same.",
+    "You may add one short opening sentence about how the week went.",
+    "No extra sections. Under 1900 characters. Discord markdown.",
   ].join(" ");
 }
 
-export function weeklyReportUserPrompt(input: {
-  weekStart: string;
-  groupStreak: number;
-  people: StatusPerson[];
-}): string {
-  return sundaySummary({
-    weekStart: input.weekStart,
-    groupStreak: input.groupStreak,
-    people: input.people,
-  });
+export function weeklyReportUserPrompt(recap: string): string {
+  return recap;
 }
 
 export function clipDiscord(text: string, max = 1900): string {

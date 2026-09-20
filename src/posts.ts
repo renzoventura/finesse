@@ -12,8 +12,9 @@ import { toLocalDate } from "./streaks.js";
 import {
   connectNudgeChannel,
   connectNudgeDm,
+  dailyUpdate,
   fallBehindNudge,
-  saturdayUpdate,
+  mergeWeekSessions,
   sundaySummary,
 } from "./templates.js";
 
@@ -29,22 +30,14 @@ export async function postSundaySummary(
     timeZone: config.tz,
     weeklyTarget: config.weeklyTarget,
   });
-  const fallback = sundaySummary({
-    weekStart: status.weekStart,
-    groupStreak: status.groupStreak,
-    people: status.people,
-  });
+  const fallback = renderSundaySummary(db, config, now);
   let text = fallback;
   if (llm && status.people.length > 0) {
     try {
       text = clipDiscord(
         await llm.complete({
           system: weeklyReportSystemPrompt(),
-          user: weeklyReportUserPrompt({
-            weekStart: status.weekStart,
-            groupStreak: status.groupStreak,
-            people: status.people,
-          }),
+          user: weeklyReportUserPrompt(fallback),
         }),
       );
     } catch (error) {
@@ -52,7 +45,7 @@ export async function postSundaySummary(
       text = fallback;
     }
   }
-  await send(client, config.channelId, { content: text });
+  await send(client, config.channelId, { content: clipDiscord(text) });
   return text;
 }
 
@@ -80,13 +73,13 @@ export async function postFallBehindNudge(
   return text;
 }
 
-export async function postSaturdayUpdate(
+export async function postDailyUpdate(
   client: Client,
   db: FinesseDb,
   config: Config,
   now = new Date(),
 ): Promise<string | null> {
-  const text = renderSaturdayUpdate(db, config, now);
+  const text = renderDailyUpdate(db, config, now);
   if (!text) {
     return null;
   }
@@ -107,11 +100,11 @@ export function renderSundaySummary(
   return sundaySummary({
     weekStart: status.weekStart,
     groupStreak: status.groupStreak,
-    people: status.people,
+    people: crewBoardPeople(db, status),
   });
 }
 
-export function renderSaturdayUpdate(
+export function renderDailyUpdate(
   db: FinesseDb,
   config: Config,
   now = new Date(),
@@ -121,15 +114,32 @@ export function renderSaturdayUpdate(
     timeZone: config.tz,
     weeklyTarget: config.weeklyTarget,
   });
-  return saturdayUpdate({
+  return dailyUpdate({
     weekStart: status.weekStart,
     groupStreak: status.groupStreak,
     today: toLocalDate(now, config.tz),
-    people: status.people.map((person) => ({
-      ...person,
-      sessions: db.weekCheckins(person.discordId, status.weekStart),
-    })),
+    people: crewBoardPeople(db, status),
   });
+}
+
+function crewBoardPeople(
+  db: FinesseDb,
+  status: ReturnType<FinesseDb["status"]>,
+) {
+  const workouts = db.weekWorkouts(status.weekStart);
+  return status.people.map((person) => ({
+    ...person,
+    sessions: mergeWeekSessions(
+      db.weekCheckins(person.discordId, status.weekStart),
+      workouts
+        .filter((row) => row.userId === person.discordId)
+        .map((row) => ({
+          date: row.date,
+          note: row.note,
+          source: row.source,
+        })),
+    ),
+  }));
 }
 
 export function renderFallBehindNudge(
