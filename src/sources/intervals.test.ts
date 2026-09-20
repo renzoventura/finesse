@@ -45,30 +45,37 @@ describe("createIntervalsSource", () => {
   });
 
   it("pulls every activity, including two on the same day", async () => {
+    const listed = [
+      {
+        id: "i1",
+        type: "WeightTraining",
+        name: "Gym",
+        start_date_local: "2026-09-07T18:00:00",
+      },
+      {
+        id: "i2",
+        type: "Run",
+        name: "Easy",
+        start_date_local: "2026-09-07T07:00:00",
+      },
+      {
+        id: "i3",
+        type: "Ride",
+        name: "Commute",
+        start_date_local: "2026-09-08T06:30:00",
+      },
+    ];
     const source = createIntervalsSource({
       fetch: async (input) => {
         const url = new URL(String(input));
-        expect(url.searchParams.get("oldest")).toBe("2026-09-07");
-        return jsonResponse(200, [
-          {
-            id: "i1",
-            type: "WeightTraining",
-            name: "Gym",
-            start_date_local: "2026-09-07T18:00:00",
-          },
-          {
-            id: "i2",
-            type: "Run",
-            name: "Easy",
-            start_date_local: "2026-09-07T07:00:00",
-          },
-          {
-            id: "i3",
-            type: "Ride",
-            name: "Commute",
-            start_date_local: "2026-09-08T06:30:00",
-          },
-        ]);
+        if (url.pathname.endsWith("/activities")) {
+          expect(url.searchParams.get("oldest")).toBe("2026-09-07");
+          return jsonResponse(200, listed);
+        }
+        expect(url.searchParams.get("intervals")).toBe("true");
+        const id = url.pathname.split("/").pop();
+        const listedActivity = listed.find((activity) => activity.id === id);
+        return jsonResponse(200, listedActivity ?? { id });
       },
     });
     const sessions = await source.pull(
@@ -87,17 +94,20 @@ describe("createIntervalsSource", () => {
     expect(sessions).toEqual([
       {
         date: "2026-09-07",
-        note: "WeightTraining — Gym",
+        note: "Gym",
+        detail: null,
         externalId: "i1",
       },
       {
         date: "2026-09-07",
         note: "Run — Easy",
+        detail: null,
         externalId: "i2",
       },
       {
         date: "2026-09-08",
         note: "Ride — Commute",
+        detail: null,
         externalId: "i3",
       },
     ]);

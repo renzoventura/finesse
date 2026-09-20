@@ -163,7 +163,7 @@ export async function postChannelMessages(
   messages: string[],
 ): Promise<void> {
   for (const text of messages) {
-    await send(client, channelId, { content: text });
+    await send(client, channelId, { content: clipDiscord(text) });
   }
 }
 

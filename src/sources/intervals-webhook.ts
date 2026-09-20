@@ -4,6 +4,7 @@ import { toLocalDate } from "../streaks.js";
 import { applyPulledWorkout } from "./ingest.js";
 import {
   canonicalAthleteId,
+  hydrateIntervalsActivity,
   type IntervalsActivity,
   sessionFromIntervalsActivity,
 } from "./intervals.js";
@@ -54,7 +55,7 @@ export function matchIntervalsAccount(
   );
 }
 
-export function applyIntervalsWebhook(
+export async function applyIntervalsWebhook(
   db: FinesseDb,
   body: IntervalsWebhookBody,
   opts: {
@@ -62,8 +63,9 @@ export function applyIntervalsWebhook(
     now: Date;
     timeZone: string;
     weeklyTarget: number;
+    fetch?: typeof fetch;
   },
-): WebhookApplyResult {
+): Promise<WebhookApplyResult> {
   if (!webhookSecretsMatch(opts.expectedSecret, body.secret)) {
     return { ok: false, unauthorized: true, created: 0, notices: [] };
   }
@@ -85,8 +87,13 @@ export function applyIntervalsWebhook(
     if (!account) {
       continue;
     }
-    const session = event.activity
-      ? sessionFromIntervalsActivity(event.activity, opts.timeZone)
+    const activity = event.activity
+      ? opts.fetch
+        ? await hydrateIntervalsActivity(opts.fetch, account, event.activity)
+        : event.activity
+      : null;
+    const session = activity
+      ? sessionFromIntervalsActivity(activity, opts.timeZone)
       : null;
     if (!session) {
       continue;

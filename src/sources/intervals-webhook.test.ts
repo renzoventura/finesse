@@ -56,9 +56,9 @@ describe("matchIntervalsAccount", () => {
 });
 
 describe("applyIntervalsWebhook", () => {
-  it("rejects a bad secret", () => {
+  it("rejects a bad secret", async () => {
     const db = tempDb();
-    const result = applyIntervalsWebhook(
+    const result = await applyIntervalsWebhook(
       db,
       { secret: "wrong", events: [] },
       { expectedSecret: SECRET, now: NOW, timeZone: TZ, weeklyTarget: 3 },
@@ -67,9 +67,9 @@ describe("applyIntervalsWebhook", () => {
     db.close();
   });
 
-  it("logs a Garmin activity and ignores calendar noise", () => {
+  it("logs a Garmin activity and ignores calendar noise", async () => {
     const db = tempDb();
-    const result = applyIntervalsWebhook(
+    const result = await applyIntervalsWebhook(
       db,
       {
         secret: SECRET,
@@ -99,10 +99,10 @@ describe("applyIntervalsWebhook", () => {
     expect(result.unauthorized).toBe(false);
     expect(result.created).toBe(1);
     expect(result.notices[0]).toContain("<@u1>");
-    expect(result.notices[0]).toContain("WeightTraining — Gym");
+    expect(result.notices[0]).toContain("Gym");
     expect(result.notices[0]).toContain("**1/3** this week");
 
-    const again = applyIntervalsWebhook(
+    const again = await applyIntervalsWebhook(
       db,
       {
         secret: SECRET,
@@ -126,14 +126,14 @@ describe("applyIntervalsWebhook", () => {
     db.close();
   });
 
-  it("still pings when the day is already checked in", () => {
+  it("still pings when the day is already checked in", async () => {
     const db = tempDb();
     db.recordCheckin("u1", "Renzo", "manual", {
       now: NOW,
       timeZone: TZ,
       source: "manual",
     });
-    const result = applyIntervalsWebhook(
+    const result = await applyIntervalsWebhook(
       db,
       {
         secret: SECRET,
@@ -161,9 +161,9 @@ describe("applyIntervalsWebhook", () => {
     db.close();
   });
 
-  it("ignores unknown athletes", () => {
+  it("ignores unknown athletes", async () => {
     const db = tempDb();
-    const result = applyIntervalsWebhook(
+    const result = await applyIntervalsWebhook(
       db,
       {
         secret: SECRET,
@@ -182,6 +182,62 @@ describe("applyIntervalsWebhook", () => {
     );
     expect(result.created).toBe(0);
     expect(result.unauthorized).toBe(false);
+    db.close();
+  });
+
+  it("includes warmup and interval steps when Intervals returns them", async () => {
+    const db = tempDb();
+    const result = await applyIntervalsWebhook(
+      db,
+      {
+        secret: SECRET,
+        events: [
+          {
+            athlete_id: "2049151",
+            type: "ACTIVITY_ANALYZED",
+            activity: {
+              id: "i55751800",
+              type: "Run",
+              name: "Threshold",
+              start_date_local: "2026-09-08T07:00:00",
+            },
+          },
+        ],
+      },
+      {
+        expectedSecret: SECRET,
+        now: NOW,
+        timeZone: TZ,
+        weeklyTarget: 3,
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              id: "i55751800",
+              type: "Run",
+              name: "Threshold",
+              start_date_local: "2026-09-08T07:00:00",
+              distance: 8200,
+              moving_time: 2880,
+              average_heartrate: 158,
+              max_heartrate: 181,
+              icu_intervals: [
+                { type: "WARMUP", moving_time: 600, distance: 1600 },
+                { type: "WORK", moving_time: 240 },
+                { type: "RECOVERY", moving_time: 120 },
+                { type: "WORK", moving_time: 240 },
+                { type: "RECOVERY", moving_time: 120 },
+                { type: "COOLDOWN", moving_time: 480, distance: 1300 },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      },
+    );
+    expect(result.notices[0]).toContain("Run — Threshold · 8.2 km · 48 min");
+    expect(result.notices[0]).toContain("Warm-up · 10 min · 1.6 km");
+    expect(result.notices[0]).toContain("2× (4 min work · 2 min easy)");
+    expect(result.notices[0]).toContain("Cool-down · 8 min · 1.3 km");
+    expect(result.notices[0]).toContain("HR 158 (max 181)");
     db.close();
   });
 });

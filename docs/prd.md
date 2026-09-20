@@ -38,7 +38,7 @@ Out: avatars, karma, questionnaire, multiple channels.
 
 ### v1 — Honest streaks (in)
 
-Daily poll of linked Intervals.icu accounts, plus Intervals webhooks when the OAuth app is approved. Watches (Garmin, Amazfit, Apple Watch, Strava) sync **into Intervals**; Finesse never talks to Strava. New members are not done at `/join` — they get a setup flow (account → watch on Intervals → private API key) until `source_accounts` has a row. A day counts once toward the 3× week target if Intervals has an activity or the person checked in manually. Every newly seen workout still pings the crew channel, with details first and the weekly count after. Intervals API keys work without an app. Instant Garmin/Amazfit pings need an Intervals OAuth app (free, apply at intervals.icu/oauth/apply); Strava-fed activities never fire those webhooks but still show up on the poll.
+Daily poll of linked Intervals.icu accounts, plus Intervals webhooks when the OAuth app is approved. Watches (Garmin, Amazfit, Apple Watch, Strava) sync **into Intervals**; Finesse never talks to Strava. New members are not done at `/join` — they get a setup flow (account → watch on Intervals → private API key) until `source_accounts` has a row. A day counts once toward the 3× week target if Intervals has an activity or the person checked in manually. Every newly seen workout still pings the crew channel, with details first (including warmup / intervals / cooldown, pace, HR, and power when Intervals has them) and the weekly count after. Intervals API keys work without an app. Instant Garmin/Amazfit pings need an Intervals OAuth app (free, apply at intervals.icu/oauth/apply); Strava-fed activities never fire those webhooks but still show up on the poll.
 
 ### v2 — Coach (in)
 

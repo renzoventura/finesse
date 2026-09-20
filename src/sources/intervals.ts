@@ -1,5 +1,11 @@
 import { toLocalDate } from "../streaks.js";
-import { formatWorkoutLabel } from "../templates.js";
+import {
+  formatWorkoutDetail,
+  formatWorkoutLabel,
+  type WorkoutDetails,
+  type WorkoutInterval,
+  type WorkoutStep,
+} from "../workout-format.js";
 import type {
   ActivitySource,
   PulledSession,
@@ -11,10 +17,41 @@ export type IntervalsActivity = {
   id?: string | number;
   name?: string;
   type?: string;
+  description?: string;
   start_date_local?: string;
   distance?: number;
+  icu_distance?: number;
   moving_time?: number;
   elapsed_time?: number;
+  total_elevation_gain?: number;
+  average_heartrate?: number;
+  max_heartrate?: number;
+  average_speed?: number;
+  average_cadence?: number;
+  average_watts?: number;
+  icu_average_watts?: number;
+  icu_weighted_avg_watts?: number;
+  weighted_average_watts?: number;
+  calories?: number;
+  icu_training_load?: number;
+  icu_intensity?: number;
+  icu_warmup_time?: number;
+  icu_cooldown_time?: number;
+  interval_summary?: string[];
+  icu_intervals?: IntervalsInterval[];
+  workout_doc?: { steps?: WorkoutStep[] };
+};
+
+export type IntervalsInterval = {
+  type?: string;
+  label?: string;
+  moving_time?: number;
+  elapsed_time?: number;
+  distance?: number;
+  average_watts?: number;
+  average_heartrate?: number;
+  average_speed?: number;
+  intensity?: number;
 };
 
 type IntervalsAthlete = {
@@ -151,7 +188,8 @@ async function pullActivities(
   }
   const sessions: PulledSession[] = [];
   const seen = new Set<string>();
-  for (const activity of activities) {
+  for (const listed of activities) {
+    const activity = await hydrateIntervalsActivity(fetchFn, account, listed);
     const session = sessionFromIntervalsActivity(activity, timeZone);
     if (!session || session.date < oldest) {
       continue;
@@ -173,16 +211,98 @@ export function sessionFromIntervalsActivity(
   if (!activity.start_date_local) {
     return null;
   }
+  const details = workoutDetailsFromIntervals(activity);
   return {
     date: activityDate(activity.start_date_local, timeZone),
     note: formatWorkoutLabel({
-      type: activity.type,
-      name: activity.name,
-      distanceMeters: activity.distance,
-      movingTimeSec: activity.moving_time ?? activity.elapsed_time,
+      type: details.type,
+      name: details.name,
+      distanceMeters: details.distanceMeters,
+      movingTimeSec: details.movingTimeSec,
     }).slice(0, 180),
+    detail: formatWorkoutDetail(details),
     externalId: activity.id === undefined ? "" : String(activity.id),
   };
+}
+
+export async function hydrateIntervalsActivity(
+  fetchFn: typeof fetch,
+  account: SourceAccount,
+  activity: IntervalsActivity,
+): Promise<IntervalsActivity> {
+  const id = activity.id === undefined ? "" : String(activity.id);
+  if (!id) {
+    return activity;
+  }
+  try {
+    const response = await fetchFn(
+      `https://intervals.icu/api/v1/activity/${encodeURIComponent(id)}?intervals=true`,
+      { headers: { Authorization: intervalsAuthHeader(account) } },
+    );
+    if (!response.ok) {
+      return activity;
+    }
+    const detail = (await response.json()) as IntervalsActivity;
+    return mergeActivity(activity, detail);
+  } catch {
+    return activity;
+  }
+}
+
+export function workoutDetailsFromIntervals(
+  activity: IntervalsActivity,
+): WorkoutDetails {
+  return {
+    type: activity.type,
+    name: activity.name,
+    description: activity.description,
+    distanceMeters: activity.distance ?? activity.icu_distance,
+    movingTimeSec: activity.moving_time ?? activity.elapsed_time,
+    elevationGainM: activity.total_elevation_gain,
+    averageHeartrate: activity.average_heartrate,
+    maxHeartrate: activity.max_heartrate,
+    averageWatts: activity.icu_average_watts ?? activity.average_watts,
+    normalizedWatts:
+      activity.icu_weighted_avg_watts ?? activity.weighted_average_watts,
+    averageSpeedMps: activity.average_speed,
+    averageCadence: activity.average_cadence,
+    calories: activity.calories,
+    trainingLoad: activity.icu_training_load,
+    intensity: activity.icu_intensity,
+    warmupSec: activity.icu_warmup_time,
+    cooldownSec: activity.icu_cooldown_time,
+    intervalSummary: activity.interval_summary,
+    intervals: (activity.icu_intervals ?? []).map(intervalFromIntervals),
+    workoutSteps: activity.workout_doc?.steps,
+  };
+}
+
+function intervalFromIntervals(interval: IntervalsInterval): WorkoutInterval {
+  return {
+    type: interval.type,
+    label: interval.label,
+    movingTimeSec: interval.moving_time ?? interval.elapsed_time,
+    distanceMeters: interval.distance,
+    averageHeartrate: interval.average_heartrate,
+    averageWatts: interval.average_watts,
+    averageSpeedMps: interval.average_speed,
+    intensity: interval.intensity,
+  };
+}
+
+function mergeActivity(
+  listed: IntervalsActivity,
+  detail: IntervalsActivity,
+): IntervalsActivity {
+  const merged: IntervalsActivity = { ...listed };
+  for (const [key, value] of Object.entries(detail) as Array<
+    [keyof IntervalsActivity, IntervalsActivity[keyof IntervalsActivity]]
+  >) {
+    if (value !== undefined && value !== null && value !== "") {
+      merged[key] = value as never;
+    }
+  }
+  return merged;
 }
 
 export function intervalsAuthHeader(account: SourceAccount): string {

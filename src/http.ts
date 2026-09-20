@@ -41,12 +41,17 @@ export function startHttpServer(
     } catch {
       return c.text("invalid json", 400);
     }
-    const result = applyIntervalsWebhook(db, body as IntervalsWebhookBody, {
-      expectedSecret: config.intervalsWebhookSecret,
-      now: new Date(),
-      timeZone: config.tz,
-      weeklyTarget: config.weeklyTarget,
-    });
+    const result = await applyIntervalsWebhook(
+      db,
+      body as IntervalsWebhookBody,
+      {
+        expectedSecret: config.intervalsWebhookSecret,
+        now: new Date(),
+        timeZone: config.tz,
+        weeklyTarget: config.weeklyTarget,
+        fetch: globalThis.fetch,
+      },
+    );
     if (result.unauthorized) {
       return c.text("unauthorized", 401);
     }

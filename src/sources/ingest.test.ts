@@ -23,6 +23,7 @@ function fakeSource(
     pull: async () =>
       sessions.map((session, index) => ({
         ...session,
+        detail: null,
         externalId: String(index),
       })),
   };

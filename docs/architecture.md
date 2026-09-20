@@ -83,7 +83,7 @@ verifyApiKey + refresh-noop             (API key: Intervals until OAuth is appro
 pull
 ```
 
-Pulled sessions and Intervals webhooks are written into `checkins` with `source = intervals`. Unique `(user_id, checkin_date)` means an auto-pull cannot double-count `/done` the same day. `source_workouts` records each external activity id so a second session that day still pings the crew channel.
+Pulled sessions and Intervals webhooks are written into `checkins` with `source = intervals`. Unique `(user_id, checkin_date)` means an auto-pull cannot double-count `/done` the same day. `source_workouts` records each external activity id so a second session that day still pings the crew channel. Each new ping hydrates `GET /activity/{id}?intervals=true` so Discord can show warmup / intervals / cooldown, pace, HR, and power when Intervals has them; the stored check-in note stays the short label for `/daily` and `/week`.
 
 `source_accounts` stores tokens per `(user_id, source)`, so a second wearable is another row, not new user columns.
 

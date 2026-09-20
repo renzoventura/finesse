@@ -62,6 +62,7 @@ export function applyPulledWorkout(
     notice: autoCheckinNotice({
       discordId: input.discordId,
       note: input.session.note,
+      detail: input.session.detail,
       checkins: result.checkinsThisWeek,
       weeklyTarget: profile?.weeklyTarget ?? input.weeklyTarget,
     }),

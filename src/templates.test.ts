@@ -179,6 +179,22 @@ describe("templates", () => {
     );
   });
 
+  it("adds interval structure under the workout title", () => {
+    const text = autoCheckinNotice({
+      discordId: "u1",
+      note: "Run — Threshold · 8.2 km · 48 min",
+      detail:
+        "Warm-up · 10 min\n4× (4 min work · 2 min easy)\nCool-down · 8 min",
+      checkins: 1,
+      weeklyTarget: 3,
+    });
+    expect(text).toContain(
+      "just worked out: **Run — Threshold · 8.2 km · 48 min**",
+    );
+    expect(text).toContain("4× (4 min work · 2 min easy)");
+    expect(text).toContain("**1/3** this week");
+  });
+
   it("formats workout details with distance and time", () => {
     expect(
       formatWorkoutLabel({

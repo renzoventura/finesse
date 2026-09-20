@@ -9,10 +9,14 @@ Product: [docs/prd.md](docs/prd.md). How it is built: [docs/architecture.md](doc
 - **One crew channel.** Check-ins, workout pings, the 19:00 daily board, and the Sunday recap all live there.
 - **3× per week, one day each.** A second session the same local day still announces in chat; it does not become 2/3 until a new calendar day (`TZ`, default `Australia/Sydney`).
 - **Auto from watches.** `/connect` links [Intervals.icu](https://intervals.icu/). Garmin, Amazfit, Strava, and Apple Watch all sync **into Intervals** (not into Finesse). Indoor / missed sync: `/done`. Friends: [crew setup](docs/crew-setup.md).
-- **Every new workout pings the channel.** Details first (type, name, distance, time), weekly count after:
+- **Every new workout pings the channel.** Details first (type, name, distance, time, plus warmup/intervals/cooldown, pace, HR, power when Intervals has them), weekly count after:
 
   ```
-  <@you> just worked out: **Run — Easy · 5.2 km · 32 min**
+  <@you> just worked out: **Run — Threshold · 8.2 km · 48 min**
+  Pace 5:51/km · HR 158 (max 181)
+  Warm-up · 10 min · 1.6 km
+  4× (4 min work · 2 min easy)
+  Cool-down · 8 min
   **1/3** this week
   ```
 

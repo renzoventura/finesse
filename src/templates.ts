@@ -325,43 +325,27 @@ export function connectNudgeChannel(discordIds: string[]): string | null {
 export function autoCheckinNotice(input: {
   discordId: string;
   note: string | null;
+  detail?: string | null;
   checkins: number;
   weeklyTarget: number;
 }): string {
   const details = input.note?.trim() || "a workout";
-  return `<@${input.discordId}> just worked out: **${details}**\n**${input.checkins}/${input.weeklyTarget}** this week`;
+  const extra = input.detail?.trim();
+  const lines = [
+    `<@${input.discordId}> just worked out: **${details}**`,
+    extra,
+    `**${input.checkins}/${input.weeklyTarget}** this week`,
+  ].filter((line): line is string => Boolean(line));
+  return clipNotice(lines.join("\n"));
 }
 
-export function formatWorkoutLabel(input: {
-  type?: string | null;
-  name?: string | null;
-  distanceMeters?: number | null;
-  movingTimeSec?: number | null;
-}): string {
-  const name = input.name?.trim() || "";
-  const type = input.type?.trim() || "";
-  const head =
-    name && type && name.toLowerCase() !== type.toLowerCase()
-      ? `${type} — ${name}`
-      : name || type || "Workout";
-  const extra: string[] = [];
-  if (input.distanceMeters && input.distanceMeters >= 100) {
-    extra.push(`${(input.distanceMeters / 1000).toFixed(1)} km`);
-  }
-  if (input.movingTimeSec && input.movingTimeSec >= 30) {
-    extra.push(formatDuration(input.movingTimeSec));
-  }
-  return extra.length ? `${head} · ${extra.join(" · ")}` : head;
-}
+export { formatWorkoutLabel } from "./workout-format.js";
 
-function formatDuration(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes} min`;
+function clipNotice(text: string, max = 1900): string {
+  if (text.length <= max) {
+    return text;
   }
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+  return `${text.slice(0, max - 1)}…`;
 }
 
 export function setupReply(profile: {

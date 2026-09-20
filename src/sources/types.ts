@@ -1,6 +1,7 @@
 export type PulledSession = {
   date: string;
   note: string | null;
+  detail: string | null;
   externalId: string;
 };
 

@@ -65,7 +65,7 @@ Finesse will pull recent Intervals activities and ping the channel for ones it h
 ### 5. Check it worked
 
 - Intervals calendar has the workout
-- Crew channel got a ping like: `just worked out: **Run — Easy · 5.2 km · 32 min**` then `**1/3** this week`
+- Crew channel got a ping like: `just worked out: **Run — Threshold · 8.2 km · 48 min**` then warmup/intervals/cooldown (if Intervals has them) then `**1/3** this week`
 
 Same activity will not ping twice. A second session the same day still pings; it does not become 2/3 until a new calendar day.
 
