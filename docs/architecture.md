@@ -96,7 +96,7 @@ Unlinked members  -- 10:00 nudge -->  DM or crew channel
 Intervals webhook  -- ACTIVITY_UPLOADED -->  SQLite + crew channel
 Intervals  -- boot + every 15 min pull -->  SQLite + crew channel
 /coach  -- LlmProvider -->  ephemeral reply
-node-cron  -- Mon 00:00 reset, 10:00 connect nudge, Sun 22:00, Thu/Sat 19:00 -->  SQLite / crew channel
+node-cron  -- Mon 00:00 reset, 10:00 connect nudge, Sun 22:00, Thu 19:00 behind, Sat 19:00 full board -->  SQLite / crew channel
 ```
 
 Slash commands are registered per guild. Intents: `Guilds`, `GuildMessages`, `GuildMessageReactions`. No privileged intents. `/coach` is ephemeral in the server so personal context does not hit the channel.

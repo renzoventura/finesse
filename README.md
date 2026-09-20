@@ -124,7 +124,7 @@ pnpm test
 pnpm dev
 ```
 
-In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/status` anywhere in the server. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu. Send friends [docs/crew-setup.md](docs/crew-setup.md).
+In the crew channel: `/join`, `/done chest day`, or react ✅ on a message. `/week` posts the crew board for everyone. `/status` is private. `/setup` then `/coach` if Gemini is configured. `/connect` to link Intervals.icu. Send friends [docs/crew-setup.md](docs/crew-setup.md).
 
 Cron does not fire if this laptop sleeps. Use Railway for the real crew.
 
@@ -180,7 +180,8 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 
 - `/join` — opt in and start Intervals.icu setup
 - `/done [note]` — log today (in the crew channel)
-- `/status` — this week and streaks
+- `/status` — this week and streaks (only you see it)
+- `/week` — post the crew board in the channel (pings everyone)
 - `/setup` — level, goal, weekly target (feeds the coach)
 - `/coach` — private session suggestion
 - `/connect` — link Intervals.icu (API key, or OAuth when the app is approved)
@@ -194,7 +195,7 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 - 10:00 — remind anyone who joined but has not linked Intervals.icu
 - Garmin → Intervals webhook — same ping, if OAuth + `PUBLIC_URL` are configured
 - Thu 19:00 — check on anyone with 0 this week
-- Sat 19:00 — check on anyone with fewer than 2
+- Sat 19:00 — ping the whole crew with this week’s board (who’s done, who needs Sunday)
 - Sun 22:00 — weekly summary (LLM if configured, else template)
 - Mon 00:00 — streak roll
 

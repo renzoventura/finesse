@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { StatusPerson } from "./db.js";
+import type { CheckinRow, StatusPerson } from "./db.js";
 import {
   autoCheckinNotice,
   connectNudgeChannel,
   fallBehindNudge,
   formatWorkoutLabel,
   onboardWelcomeChannel,
+  type SaturdayPerson,
+  saturdayUpdate,
   sundaySummary,
 } from "./templates.js";
 
 function person(
-  overrides: Partial<StatusPerson> & Pick<StatusPerson, "discordId" | "name">,
-): StatusPerson {
+  overrides: Partial<SaturdayPerson> & Pick<StatusPerson, "discordId" | "name">,
+): SaturdayPerson {
   return {
     currentStreak: 0,
     checkins: 0,
@@ -20,6 +22,7 @@ function person(
     level: null,
     goal: null,
     sources: [],
+    sessions: [] as CheckinRow[],
     ...overrides,
   };
 }
@@ -63,6 +66,56 @@ describe("templates", () => {
     });
     expect(text).toContain("<@99>");
     expect(text).toContain("0/3");
+  });
+
+  it("pings the whole crew on Saturday, including people on pace", () => {
+    const text = saturdayUpdate({
+      weekStart: "2026-09-14",
+      groupStreak: 0,
+      today: "2026-09-19",
+      people: [
+        person({
+          discordId: "saish",
+          name: "sishydishy",
+          checkins: 2,
+          weeklyTarget: 3,
+          sessions: [
+            {
+              date: "2026-09-18",
+              note: "HighIntensityIntervalTraining — HIIT · 20 min",
+              source: "intervals",
+            },
+            { date: "2026-09-19", note: null, source: "manual" },
+          ],
+        }),
+        person({
+          discordId: "renzo",
+          name: "dual_lasagna",
+          checkins: 1,
+          weeklyTarget: 3,
+          sessions: [{ date: "2026-09-18", note: null, source: "manual" }],
+        }),
+      ],
+    });
+    expect(text).toContain("<@saish>");
+    expect(text).toContain("<@renzo>");
+    expect(text).toContain("2/3");
+    expect(text).toContain("needs 1 more · 2 days left");
+    expect(text).toContain("HIIT · 20 min");
+    expect(text).toContain("logged");
+    expect(text).toContain("1/3");
+    expect(text).toContain("needs 2 more · 2 days left");
+  });
+
+  it("skips Saturday when nobody has joined", () => {
+    expect(
+      saturdayUpdate({
+        weekStart: "2026-09-14",
+        groupStreak: 0,
+        today: "2026-09-19",
+        people: [],
+      }),
+    ).toBeNull();
   });
 
   it("announces an auto check-in with a mention", () => {

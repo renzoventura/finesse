@@ -7,6 +7,7 @@ import {
   postChannelMessages,
   postConnectReminders,
   postFallBehindNudge,
+  postSaturdayUpdate,
   postSundaySummary,
 } from "./posts.js";
 import { ingestAllSources } from "./sources/ingest.js";
@@ -89,9 +90,11 @@ export function startCron(
   schedule(
     "0 19 * * 6",
     wrap("saturday-nudge", async () => {
-      const text = await postFallBehindNudge(client, db, config, 2);
+      const text = await postSaturdayUpdate(client, db, config);
       console.log(
-        text ? "[cron] saturday nudge posted" : "[cron] saturday nudge skipped",
+        text
+          ? "[cron] saturday update posted"
+          : "[cron] saturday update skipped",
       );
     }),
     { timezone },

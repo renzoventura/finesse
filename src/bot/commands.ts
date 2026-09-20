@@ -21,7 +21,12 @@ export const commands = [
   },
   {
     name: "status",
-    description: "This week's progress and streaks",
+    description: "This week's progress and streaks (only you see it)",
+    dm_permission: false,
+  },
+  {
+    name: "week",
+    description: "Post this week's crew board in the channel",
     dm_permission: false,
   },
   {

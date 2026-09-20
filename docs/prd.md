@@ -29,7 +29,7 @@ Manual check-ins, flat 3x/week, templated Sunday summary, fall-behind nudge. Ans
 
 In:
 
-- `/join` or first `/done` / ✅ opts a person in (lurkers do not count). `/join` and first check-in walk them through linking Intervals.icu (channel welcome + buttons). Until they link, Finesse keeps prompting (private on `/done` / `/status`, and a 10:00 DM or channel ping). They can snooze two days with **I'll use /done for now**.
+- `/join` or first `/done` / ✅ opts a person in (lurkers do not count). `/join` and first check-in walk them through linking Intervals.icu (channel welcome + buttons). Until they link, Finesse keeps prompting (private on `/done` / `/status`, and a 10:00 DM or channel ping). They can snooze two days with **I'll use /done for now**. `/week` posts the same crew board Saturday 19:00 uses.
 - `/done [note]` or ✅ in one crew channel
 - Individual and group streaks
 - Sunday summary and “check on X” posts in that same channel
@@ -70,7 +70,7 @@ Needs Garmin Health API approval and/or an iOS HealthKit app. Amazfit has no pat
 - Sunday 22:00: summary of the **current** week (after the 15-minute source pull).
 - Monday 00:00: apply streak updates, roll the week. Catch up on boot if the bot was down.
 - Thursday 19:00: nudge anyone with **0** this week.
-- Saturday 19:00: nudge anyone with **fewer than 2**.
+- Saturday 19:00: ping **everyone** opted in with this week’s days, session notes, and who still needs Sunday.
 - 10:00: remind opted-in members who still have no Intervals.icu link (DM first; crew channel if DMs are closed). Skip if they snoozed.
 - One Discord channel for check-ins, nudges, workout pings, and the Sunday summary.
 

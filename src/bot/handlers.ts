@@ -21,7 +21,11 @@ import {
   coachUserPrompt,
 } from "../llm/prompts.js";
 import type { LlmProvider } from "../llm/types.js";
-import { postChannelMessages, postOnboardWelcome } from "../posts.js";
+import {
+  postChannelMessages,
+  postOnboardWelcome,
+  renderSaturdayUpdate,
+} from "../posts.js";
 import { oauthRedirectUri } from "../sources/create.js";
 import { ingestSource } from "../sources/ingest.js";
 import type { ActivitySource } from "../sources/types.js";
@@ -120,6 +124,10 @@ async function onInteraction(
     }
     if (interaction.commandName === "status") {
       await handleStatus(ctx, interaction);
+      return;
+    }
+    if (interaction.commandName === "week") {
+      await handleWeek(ctx, interaction);
       return;
     }
     if (interaction.commandName === "setup") {
@@ -268,6 +276,21 @@ async function handleStatus(
     components: needsLink ? [onboardButtons()] : [],
     ...hidden,
   });
+}
+
+async function handleWeek(
+  ctx: AppContext,
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  const text = renderSaturdayUpdate(ctx.db, ctx.config);
+  if (!text) {
+    await interaction.reply({
+      content: "Nobody has joined the crew yet. `/join` or `/done` to get in.",
+      ...hidden,
+    });
+    return;
+  }
+  await interaction.reply({ content: text });
 }
 
 async function handleSetup(

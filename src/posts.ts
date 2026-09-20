@@ -8,10 +8,12 @@ import {
   weeklyReportUserPrompt,
 } from "./llm/prompts.js";
 import type { LlmProvider } from "./llm/types.js";
+import { toLocalDate } from "./streaks.js";
 import {
   connectNudgeChannel,
   connectNudgeDm,
   fallBehindNudge,
+  saturdayUpdate,
   sundaySummary,
 } from "./templates.js";
 
@@ -78,6 +80,20 @@ export async function postFallBehindNudge(
   return text;
 }
 
+export async function postSaturdayUpdate(
+  client: Client,
+  db: FinesseDb,
+  config: Config,
+  now = new Date(),
+): Promise<string | null> {
+  const text = renderSaturdayUpdate(db, config, now);
+  if (!text) {
+    return null;
+  }
+  await send(client, config.channelId, { content: text });
+  return text;
+}
+
 export function renderSundaySummary(
   db: FinesseDb,
   config: Config,
@@ -92,6 +108,27 @@ export function renderSundaySummary(
     weekStart: status.weekStart,
     groupStreak: status.groupStreak,
     people: status.people,
+  });
+}
+
+export function renderSaturdayUpdate(
+  db: FinesseDb,
+  config: Config,
+  now = new Date(),
+): string | null {
+  const status = db.status({
+    now,
+    timeZone: config.tz,
+    weeklyTarget: config.weeklyTarget,
+  });
+  return saturdayUpdate({
+    weekStart: status.weekStart,
+    groupStreak: status.groupStreak,
+    today: toLocalDate(now, config.tz),
+    people: status.people.map((person) => ({
+      ...person,
+      sessions: db.weekCheckins(person.discordId, status.weekStart),
+    })),
   });
 }
 

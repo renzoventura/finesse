@@ -1,5 +1,5 @@
-import type { StatusPerson } from "./db.js";
-import { formatShortDate, sundayOf } from "./streaks.js";
+import type { CheckinRow, StatusPerson } from "./db.js";
+import { addDays, formatShortDate, sundayOf } from "./streaks.js";
 
 function targetOf(person: { weeklyTarget?: number }, fallback: number): number {
   return person.weeklyTarget ?? fallback;
@@ -20,6 +20,68 @@ export function sundaySummary(input: {
   });
   const weeks = input.groupStreak === 1 ? "week" : "weeks";
   return `${header}\n\n${lines.join("\n")}\n\n🔥 Group streak: ${input.groupStreak} ${weeks}`;
+}
+
+export type SaturdayPerson = StatusPerson & {
+  sessions: CheckinRow[];
+};
+
+export function saturdayUpdate(input: {
+  weekStart: string;
+  groupStreak: number;
+  people: SaturdayPerson[];
+  today: string;
+}): string | null {
+  if (input.people.length === 0) {
+    return null;
+  }
+  const daysLeft = daysLeftInclusive(input.today, input.weekStart);
+  const header = `**This week** (${formatShortDate(input.weekStart)} – ${formatShortDate(sundayOf(input.weekStart))})`;
+  const blocks = input.people.map((person) => {
+    const sessions =
+      person.sessions.length === 0
+        ? "  • no days logged yet"
+        : person.sessions
+            .map(
+              (session) =>
+                `  • ${formatShortDate(session.date)} — ${sessionLabel(session)}`,
+            )
+            .join("\n");
+    return `<@${person.discordId}> — **${person.checkins}/${person.weeklyTarget}** · ${weekPace(person, daysLeft)}\n${sessions}`;
+  });
+  const weeks = input.groupStreak === 1 ? "week" : "weeks";
+  return `${header}\n\n${blocks.join("\n\n")}\n\n🔥 Group streak: ${input.groupStreak} ${weeks}\nThrough Sunday.`;
+}
+
+function daysLeftInclusive(today: string, weekStart: string): number {
+  const end = sundayOf(weekStart);
+  if (today > end) {
+    return 0;
+  }
+  let day = today < weekStart ? weekStart : today;
+  let n = 0;
+  while (day <= end && n < 8) {
+    n += 1;
+    day = addDays(day, 1);
+  }
+  return n;
+}
+
+function weekPace(person: StatusPerson, daysLeft: number): string {
+  const need = person.weeklyTarget - person.checkins;
+  if (need <= 0) {
+    return "✅ week done";
+  }
+  const window = daysLeft <= 1 ? "last day" : `${daysLeft} days left`;
+  return `needs ${need} more · ${window}`;
+}
+
+function sessionLabel(session: CheckinRow): string {
+  const note = session.note?.trim();
+  if (note) {
+    return note;
+  }
+  return session.source === "manual" ? "logged" : session.source;
 }
 
 export function fallBehindNudge(input: {
