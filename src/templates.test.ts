@@ -203,7 +203,7 @@ describe("templates", () => {
         distanceMeters: 5234,
         movingTimeSec: 1920,
       }),
-    ).toBe("Run — Easy · 5.2 km · 32 min");
+    ).toBe("Run — Easy · 5.2 km · 32m");
   });
 
   it("welcomes a new member with Intervals steps", () => {

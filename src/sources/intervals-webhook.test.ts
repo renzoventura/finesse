@@ -156,7 +156,7 @@ describe("applyIntervalsWebhook", () => {
     );
     expect(result.created).toBe(0);
     expect(result.notices).toHaveLength(1);
-    expect(result.notices[0]).toContain("Run — Easy · 5.2 km · 32 min");
+    expect(result.notices[0]).toContain("Run — Easy · 5.2 km · 32m");
     expect(result.notices[0]).toContain("**1/3** this week");
     db.close();
   });
@@ -233,10 +233,10 @@ describe("applyIntervalsWebhook", () => {
           ),
       },
     );
-    expect(result.notices[0]).toContain("Run — Threshold · 8.2 km · 48 min");
-    expect(result.notices[0]).toContain("Warm-up · 10 min · 1.6 km");
-    expect(result.notices[0]).toContain("2× (4 min work · 2 min easy)");
-    expect(result.notices[0]).toContain("Cool-down · 8 min · 1.3 km");
+    expect(result.notices[0]).toContain("Run — Threshold · 8.2 km · 48m");
+    expect(result.notices[0]).toContain("Warm-up · 1 lap · 10m · 1.6 km");
+    expect(result.notices[0]).toContain("2× (4m work · 2m easy)");
+    expect(result.notices[0]).toContain("Cool-down · 1 lap · 8m · 1.3 km");
     expect(result.notices[0]).toContain("HR 158 (max 181)");
     db.close();
   });

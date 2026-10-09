@@ -12,11 +12,11 @@ Product: [docs/prd.md](docs/prd.md). How it is built: [docs/architecture.md](doc
 - **Every new workout pings the channel.** Details first (type, name, distance, time, plus warmup/intervals/cooldown, pace, HR, power when Intervals has them), weekly count after:
 
   ```
-  <@you> just worked out: **Run — Threshold · 8.2 km · 48 min**
+  <@you> just worked out: **Run — Threshold · 8.2 km · 48m**
   Pace 5:51/km · HR 158 (max 181)
-  Warm-up · 10 min · 1.6 km
-  4× (4 min work · 2 min easy)
-  Cool-down · 8 min
+  Warm-up · 1 lap · 10m · 1.6 km
+  4× (4m work · 2m easy)
+  Cool-down · 1 lap · 8m
   **1/3** this week
   ```
 
