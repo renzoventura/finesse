@@ -6,7 +6,6 @@ import {
   sessionFromIntervalsActivity,
 } from "../sources/intervals.js";
 import type { SourceAccount } from "../sources/types.js";
-import { autoCheckinNotice } from "../templates.js";
 import { flagValue, isDryRun } from "./boot.js";
 
 const DEFAULT_ACTIVITY = "i194972070";
@@ -63,47 +62,12 @@ async function resolveChannelId(
   throw new Error("No Discord text channel found. Set CHANNEL_ID.");
 }
 
-async function recentWeekLine(
-  rest: REST,
-  channelId: string,
-): Promise<{ checkins: number; weeklyTarget: number } | null> {
-  const messages = (await rest.get(Routes.channelMessages(channelId), {
-    query: new URLSearchParams({ limit: "30" }),
-  })) as Array<{ content?: string }>;
-  for (const message of messages) {
-    const match = message.content?.match(/\*\*(\d+)\/(\d+)\*\* this week/);
-    if (match?.[1] && match[2]) {
-      return {
-        checkins: Number(match[1]),
-        weeklyTarget: Number(match[2]),
-      };
-    }
+async function mentionId(override?: string): Promise<string> {
+  const value = override ?? process.env.DISCORD_USER_ID?.trim();
+  if (!value) {
+    throw new Error("Set DISCORD_USER_ID or pass --discord-id");
   }
-  return null;
-}
-
-async function mentionId(
-  rest: REST,
-  channelId: string,
-  override?: string,
-): Promise<string> {
-  if (override) {
-    return override;
-  }
-  const fromEnv = process.env.DISCORD_USER_ID?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
-  const messages = (await rest.get(Routes.channelMessages(channelId), {
-    query: new URLSearchParams({ limit: "30" }),
-  })) as Array<{ content?: string }>;
-  for (const message of messages) {
-    const match = message.content?.match(/^<@(\d+)> just worked out:/);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-  throw new Error("Set DISCORD_USER_ID or pass --discord-id");
+  return value;
 }
 
 async function main(): Promise<void> {
@@ -116,8 +80,7 @@ async function main(): Promise<void> {
     rest,
     flagValue("--channel") ?? process.env.CHANNEL_ID?.trim(),
   );
-  const discordId = await mentionId(rest, channelId, flagValue("--discord-id"));
-  const week = await recentWeekLine(rest, channelId);
+  const discordId = await mentionId(flagValue("--discord-id"));
 
   const listed: IntervalsActivity = { id: activityId };
   const activity = await hydrateIntervalsActivity(
@@ -135,14 +98,11 @@ async function main(): Promise<void> {
 
   const notice = [
     "🔁 Re-ping (format check, not a new check-in)",
-    autoCheckinNotice({
-      discordId,
-      note: session.note,
-      detail: session.detail,
-      checkins: week?.checkins ?? 1,
-      weeklyTarget: week?.weeklyTarget ?? 3,
-    }),
-  ].join("\n");
+    `<@${discordId}> just worked out: **${session.note ?? "a workout"}**`,
+    session.detail?.trim(),
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 
   console.log(notice);
   console.log(`channel ${channelId} activity ${activityId}`);
