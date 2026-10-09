@@ -1,6 +1,6 @@
 import { Encoder } from "@garmin/fitsdk";
 import { describe, expect, it } from "vitest";
-import { decodeFitLapIntensities } from "./fit-laps.js";
+import { decodeFitLaps } from "./fit-laps.js";
 
 function fitWithLaps(
   intensities: Array<{ intensity: string; seconds: number }>,
@@ -17,13 +17,14 @@ function fitWithLaps(
       intensity: lap.intensity,
       totalTimerTime: lap.seconds,
       totalDistance: 1000,
+      avgHeartRate: 150,
     });
   }
   return encoder.close();
 }
 
-describe("decodeFitLapIntensities", () => {
-  it("reads Garmin lap intensity from a FIT file", () => {
+describe("decodeFitLaps", () => {
+  it("reads Garmin lap intensity, time, and distance from a FIT file", () => {
     const bytes = fitWithLaps([
       { intensity: "warmup", seconds: 300 },
       { intensity: "active", seconds: 400 },
@@ -31,18 +32,21 @@ describe("decodeFitLapIntensities", () => {
       { intensity: "active", seconds: 400 },
       { intensity: "cooldown", seconds: 300 },
     ]);
-    expect(decodeFitLapIntensities(bytes)).toEqual([
+    expect(decodeFitLaps(bytes).map((lap) => lap.fitLapIntensity)).toEqual([
       "warmup",
       "active",
       "recovery",
       "active",
       "cooldown",
     ]);
+    expect(decodeFitLaps(bytes)[0]).toMatchObject({
+      movingTimeSec: 300,
+      distanceMeters: 1000,
+      averageHeartrate: 150,
+    });
   });
 
   it("returns nothing for Apple/Amazfit files that are not FIT", () => {
-    expect(
-      decodeFitLapIntensities(new TextEncoder().encode("<gpx></gpx>")),
-    ).toEqual([]);
+    expect(decodeFitLaps(new TextEncoder().encode("<gpx></gpx>"))).toEqual([]);
   });
 });

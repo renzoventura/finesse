@@ -1,7 +1,14 @@
 import { gunzipSync } from "node:zlib";
 import { Decoder, Stream } from "@garmin/fitsdk";
 
-export function decodeFitLapIntensities(bytes: Uint8Array): string[] {
+export type FitLap = {
+  fitLapIntensity: string;
+  movingTimeSec: number | null;
+  distanceMeters: number | null;
+  averageHeartrate: number | null;
+};
+
+export function decodeFitLaps(bytes: Uint8Array): FitLap[] {
   try {
     const fit = unzipIfNeeded(bytes);
     const stream = Stream.fromBuffer(fit);
@@ -11,9 +18,20 @@ export function decodeFitLapIntensities(bytes: Uint8Array): string[] {
     }
     const { messages } = decoder.read();
     const laps = messages.lapMesgs ?? [];
-    return laps
-      .map((lap) => normalizeIntensity(lap.intensity))
-      .filter((value): value is string => Boolean(value));
+    return laps.flatMap((lap) => {
+      const fitLapIntensity = normalizeIntensity(lap.intensity);
+      if (!fitLapIntensity) {
+        return [];
+      }
+      return [
+        {
+          fitLapIntensity,
+          movingTimeSec: asNumber(lap.totalTimerTime),
+          distanceMeters: asNumber(lap.totalDistance),
+          averageHeartrate: asNumber(lap.avgHeartRate),
+        },
+      ];
+    });
   } catch {
     return [];
   }
@@ -31,4 +49,8 @@ function normalizeIntensity(value: unknown): string | null {
     return value.trim().toLowerCase();
   }
   return null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

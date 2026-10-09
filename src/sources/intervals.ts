@@ -6,7 +6,7 @@ import {
   type WorkoutInterval,
   type WorkoutStep,
 } from "../workout-format.js";
-import { decodeFitLapIntensities } from "./fit-laps.js";
+import { decodeFitLaps, type FitLap } from "./fit-laps.js";
 import type {
   ActivitySource,
   PulledSession,
@@ -41,7 +41,7 @@ export type IntervalsActivity = {
   interval_summary?: string[];
   icu_intervals?: IntervalsInterval[];
   workout_doc?: { steps?: WorkoutStep[] };
-  fitLapIntensities?: string[];
+  fitLaps?: FitLap[];
 };
 
 export type IntervalsInterval = {
@@ -246,22 +246,18 @@ export async function hydrateIntervalsActivity(
     }
     const detail = (await response.json()) as IntervalsActivity;
     const merged = mergeActivity(activity, detail);
-    merged.fitLapIntensities = await fetchFitLapIntensities(
-      fetchFn,
-      account,
-      id,
-    );
+    merged.fitLaps = await fetchFitLaps(fetchFn, account, id);
     return merged;
   } catch {
     return activity;
   }
 }
 
-async function fetchFitLapIntensities(
+async function fetchFitLaps(
   fetchFn: typeof fetch,
   account: SourceAccount,
   id: string,
-): Promise<string[]> {
+): Promise<FitLap[]> {
   try {
     const response = await fetchFn(
       `https://intervals.icu/api/v1/activity/${encodeURIComponent(id)}/file`,
@@ -270,9 +266,7 @@ async function fetchFitLapIntensities(
     if (!response.ok) {
       return [];
     }
-    return decodeFitLapIntensities(
-      new Uint8Array(await response.arrayBuffer()),
-    );
+    return decodeFitLaps(new Uint8Array(await response.arrayBuffer()));
   } catch {
     return [];
   }
@@ -301,17 +295,27 @@ export function workoutDetailsFromIntervals(
     warmupSec: activity.icu_warmup_time,
     cooldownSec: activity.icu_cooldown_time,
     intervalSummary: activity.interval_summary,
-    intervals: (activity.icu_intervals ?? []).map((interval, index) =>
-      intervalFromIntervals(interval, activity.fitLapIntensities?.[index]),
-    ),
+    intervals: intervalsFromActivity(activity),
     workoutSteps: activity.workout_doc?.steps,
   };
 }
 
-function intervalFromIntervals(
-  interval: IntervalsInterval,
-  fitLapIntensity?: string,
-): WorkoutInterval {
+function intervalsFromActivity(activity: IntervalsActivity): WorkoutInterval[] {
+  if (activity.fitLaps?.length) {
+    return activity.fitLaps.map((lap) => ({
+      type: lap.fitLapIntensity === "recovery" ? "RECOVERY" : "WORK",
+      movingTimeSec: lap.movingTimeSec,
+      distanceMeters: lap.distanceMeters,
+      averageHeartrate: lap.averageHeartrate,
+      fitLapIntensity: lap.fitLapIntensity,
+    }));
+  }
+  return (activity.icu_intervals ?? []).map((interval) =>
+    intervalFromIntervals(interval),
+  );
+}
+
+function intervalFromIntervals(interval: IntervalsInterval): WorkoutInterval {
   return {
     type: interval.type,
     label: interval.label,
@@ -321,7 +325,6 @@ function intervalFromIntervals(
     averageWatts: interval.average_watts,
     averageSpeedMps: interval.average_speed,
     intensity: interval.intensity,
-    fitLapIntensity: fitLapIntensity ?? null,
   };
 }
 
