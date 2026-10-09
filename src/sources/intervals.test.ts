@@ -1,3 +1,4 @@
+import { Encoder } from "@garmin/fitsdk";
 import { describe, expect, it } from "vitest";
 import {
   basicAuth,
@@ -72,6 +73,9 @@ describe("createIntervalsSource", () => {
           expect(url.searchParams.get("oldest")).toBe("2026-09-07");
           return jsonResponse(200, listed);
         }
+        if (url.pathname.endsWith("/file")) {
+          return new Response(null, { status: 404 });
+        }
         expect(url.searchParams.get("intervals")).toBe("true");
         const id = url.pathname.split("/").pop();
         const listedActivity = listed.find((activity) => activity.id === id);
@@ -111,6 +115,101 @@ describe("createIntervalsSource", () => {
         externalId: "i3",
       },
     ]);
+  });
+
+  it("overlays Garmin FIT lap intensity onto Intervals laps", async () => {
+    const encoder = new Encoder();
+    encoder.writeMesg({
+      mesgNum: 0,
+      type: "activity",
+      manufacturer: "development",
+    });
+    encoder.writeMesg({
+      mesgNum: 19,
+      intensity: "warmup",
+      totalTimerTime: 324,
+      totalDistance: 1000,
+    });
+    encoder.writeMesg({
+      mesgNum: 19,
+      intensity: "active",
+      totalTimerTime: 320,
+      totalDistance: 1000,
+    });
+    encoder.writeMesg({
+      mesgNum: 19,
+      intensity: "recovery",
+      totalTimerTime: 360,
+      totalDistance: 1000,
+    });
+    const fit = encoder.close();
+    const source = createIntervalsSource({
+      fetch: async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname.endsWith("/activities")) {
+          return jsonResponse(200, [
+            {
+              id: "i194972070",
+              type: "Run",
+              name: "Melbourne - Lily long run",
+              start_date_local: "2026-10-08T17:46:51",
+              distance: 3000,
+              moving_time: 1004,
+            },
+          ]);
+        }
+        if (url.pathname.endsWith("/file")) {
+          return new Response(fit, {
+            status: 200,
+            headers: { "Content-Type": "application/octet-stream" },
+          });
+        }
+        return jsonResponse(200, {
+          id: "i194972070",
+          type: "Run",
+          name: "Melbourne - Lily long run",
+          start_date_local: "2026-10-08T17:46:51",
+          distance: 3000,
+          moving_time: 1004,
+          icu_intervals: [
+            {
+              type: "WORK",
+              moving_time: 324,
+              distance: 1000,
+              average_heartrate: 146,
+            },
+            {
+              type: "WORK",
+              moving_time: 320,
+              distance: 1000,
+              average_heartrate: 174,
+            },
+            {
+              type: "RECOVERY",
+              moving_time: 360,
+              distance: 1000,
+              average_heartrate: 166,
+            },
+          ],
+        });
+      },
+    });
+    const sessions = await source.pull(
+      {
+        discordId: "u1",
+        name: "Renzo",
+        source: "intervals",
+        externalId: "i717575",
+        accessToken: KEY,
+        refreshToken: "api_key",
+        expiresAt: 0,
+      },
+      { after: new Date("2026-10-08T00:00:00.000Z") },
+      TZ,
+    );
+    expect(sessions[0]?.detail).toContain("Warm-up\n1 · 5m 24s · 1.0 km");
+    expect(sessions[0]?.detail).toContain("Workout\n2 · 5m 20s · 1.0 km");
+    expect(sessions[0]?.detail).toContain("Recovery\n3 · 6m · 1.0 km");
   });
 
   it("uses OAuth when client id and secret are set", async () => {

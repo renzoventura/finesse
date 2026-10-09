@@ -6,6 +6,7 @@ import {
   type WorkoutInterval,
   type WorkoutStep,
 } from "../workout-format.js";
+import { decodeFitLapIntensities } from "./fit-laps.js";
 import type {
   ActivitySource,
   PulledSession,
@@ -40,6 +41,7 @@ export type IntervalsActivity = {
   interval_summary?: string[];
   icu_intervals?: IntervalsInterval[];
   workout_doc?: { steps?: WorkoutStep[] };
+  fitLapIntensities?: string[];
 };
 
 export type IntervalsInterval = {
@@ -243,9 +245,36 @@ export async function hydrateIntervalsActivity(
       return activity;
     }
     const detail = (await response.json()) as IntervalsActivity;
-    return mergeActivity(activity, detail);
+    const merged = mergeActivity(activity, detail);
+    merged.fitLapIntensities = await fetchFitLapIntensities(
+      fetchFn,
+      account,
+      id,
+    );
+    return merged;
   } catch {
     return activity;
+  }
+}
+
+async function fetchFitLapIntensities(
+  fetchFn: typeof fetch,
+  account: SourceAccount,
+  id: string,
+): Promise<string[]> {
+  try {
+    const response = await fetchFn(
+      `https://intervals.icu/api/v1/activity/${encodeURIComponent(id)}/file`,
+      { headers: { Authorization: intervalsAuthHeader(account) } },
+    );
+    if (!response.ok) {
+      return [];
+    }
+    return decodeFitLapIntensities(
+      new Uint8Array(await response.arrayBuffer()),
+    );
+  } catch {
+    return [];
   }
 }
 
@@ -272,12 +301,17 @@ export function workoutDetailsFromIntervals(
     warmupSec: activity.icu_warmup_time,
     cooldownSec: activity.icu_cooldown_time,
     intervalSummary: activity.interval_summary,
-    intervals: (activity.icu_intervals ?? []).map(intervalFromIntervals),
+    intervals: (activity.icu_intervals ?? []).map((interval, index) =>
+      intervalFromIntervals(interval, activity.fitLapIntensities?.[index]),
+    ),
     workoutSteps: activity.workout_doc?.steps,
   };
 }
 
-function intervalFromIntervals(interval: IntervalsInterval): WorkoutInterval {
+function intervalFromIntervals(
+  interval: IntervalsInterval,
+  fitLapIntensity?: string,
+): WorkoutInterval {
   return {
     type: interval.type,
     label: interval.label,
@@ -287,6 +321,7 @@ function intervalFromIntervals(interval: IntervalsInterval): WorkoutInterval {
     averageWatts: interval.average_watts,
     averageSpeedMps: interval.average_speed,
     intensity: interval.intensity,
+    fitLapIntensity: fitLapIntensity ?? null,
   };
 }
 

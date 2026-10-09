@@ -7,6 +7,8 @@ export type WorkoutInterval = {
   averageWatts?: number | null;
   averageSpeedMps?: number | null;
   intensity?: number | null;
+  /** Garmin FIT lap.intensity: warmup, active, recovery, cooldown. */
+  fitLapIntensity?: string | null;
 };
 
 export type WorkoutStep = {
@@ -78,7 +80,8 @@ const SPORT_LABELS: Record<string, string> = {
 
 const GENERIC_NAME =
   /^(running|cycling|ride|run|workout|hiit|walk|walking|swim|swimming)$/i;
-const MAX_STRUCTURE_LINES = 10;
+const MAX_STRUCTURE_LINES = 12;
+const MAX_LABELED_LAP_LINES = 40;
 const MIN_PHASE_SEC = 30;
 
 export function sportLabel(type?: string | null): string {
@@ -241,17 +244,23 @@ function formatExecutedIntervals(input: WorkoutDetails): string[] {
   );
   if (
     useful.length < 2 &&
-    !useful.some((interval) => phaseOf(interval) !== "work")
+    !useful.some(
+      (interval) =>
+        phaseOf(interval) !== "work" || fitPhaseOf(interval) !== "work",
+    )
   ) {
     return [];
+  }
+  if (useful.some((interval) => interval.fitLapIntensity)) {
+    return formatLabeledLaps(useful, fitPhaseOf).slice(
+      0,
+      MAX_LABELED_LAP_LINES,
+    );
   }
   if (looksLikeRepeatingWorkRest(useful)) {
     return collapseIntervals(useful).slice(0, MAX_STRUCTURE_LINES);
   }
-  if (looksLikeEvenSplits(useful)) {
-    return formatPhaseBuckets(tagAutolapPhases(useful, input));
-  }
-  return collapseIntervals(useful).slice(0, MAX_STRUCTURE_LINES);
+  return formatLabeledLaps(useful, phaseOf).slice(0, MAX_LABELED_LAP_LINES);
 }
 
 function isUsefulInterval(
@@ -302,22 +311,6 @@ function looksLikeRepeatingWorkRest(intervals: WorkoutInterval[]): boolean {
     }
   }
   return false;
-}
-
-function looksLikeEvenSplits(intervals: WorkoutInterval[]): boolean {
-  if (intervals.length < 3) {
-    return false;
-  }
-  const distances = intervals.map((interval) => interval.distanceMeters ?? 0);
-  if (distances.every((distance) => distance >= 400)) {
-    const mid = median(distances);
-    return distances.every(
-      (distance) => Math.abs(distance - mid) / mid <= 0.25,
-    );
-  }
-  const times = intervals.map((interval) => interval.movingTimeSec ?? 0);
-  const mid = median(times);
-  return mid >= 60 && times.every((time) => Math.abs(time - mid) / mid <= 0.25);
 }
 
 function collapseIntervals(intervals: WorkoutInterval[]): string[] {
@@ -392,106 +385,64 @@ function similarInterval(
   return delta <= 15 || (Math.max(a, b) > 0 && delta / Math.max(a, b) <= 0.2);
 }
 
-function tagAutolapPhases(
-  intervals: WorkoutInterval[],
-  activity: WorkoutDetails,
-): Array<{ interval: WorkoutInterval; phase: Phase }> {
-  const phases: Phase[] = intervals.map((interval) => {
-    const phase = phaseOf(interval);
-    return phase === "warmup" || phase === "cooldown" ? phase : "work";
-  });
-  coverEnd(intervals, phases, activity.warmupSec ?? 0, "warmup", "start");
-  coverEnd(intervals, phases, activity.cooldownSec ?? 0, "cooldown", "end");
-  if (!phases.includes("warmup") && !phases.includes("cooldown")) {
-    inferEasyEndsFromHr(intervals, phases);
+function fitPhaseOf(interval: WorkoutInterval): Phase {
+  const value = interval.fitLapIntensity?.trim().toLowerCase() ?? "";
+  if (value === "warmup") {
+    return "warmup";
   }
-  return intervals.map((interval, index) => ({
-    interval,
-    phase: phases[index] ?? "work",
-  }));
+  if (value === "cooldown") {
+    return "cooldown";
+  }
+  if (value === "recovery" || value === "rest") {
+    return "recovery";
+  }
+  return "work";
 }
 
-function coverEnd(
+function formatLabeledLaps(
   intervals: WorkoutInterval[],
-  phases: Phase[],
-  seconds: number,
-  phase: Phase,
-  from: "start" | "end",
-): void {
-  if (seconds < MIN_PHASE_SEC || intervals.length < 2) {
-    return;
-  }
-  let acc = 0;
-  if (from === "start") {
-    for (let index = 0; index < intervals.length - 1; index += 1) {
-      if (acc >= seconds) {
-        break;
-      }
-      phases[index] = phase;
-      acc += intervals[index]?.movingTimeSec ?? 0;
-    }
-    return;
-  }
-  for (let index = intervals.length - 1; index > 0; index -= 1) {
-    if (phases[index] === "warmup" || acc >= seconds) {
-      break;
-    }
-    phases[index] = phase;
-    acc += intervals[index]?.movingTimeSec ?? 0;
-  }
-}
-
-function inferEasyEndsFromHr(
-  intervals: WorkoutInterval[],
-  phases: Phase[],
-): void {
-  const hrs = intervals
-    .map((interval) => interval.averageHeartrate)
-    .filter((hr): hr is number => hr != null && hr >= 40);
-  if (hrs.length < 4) {
-    return;
-  }
-  const maxHr = Math.max(...hrs);
-  const minHr = Math.min(...hrs);
-  if (maxHr - minHr < 15) {
-    return;
-  }
-  const cutoff = maxHr - 20;
-  for (let index = 0; index < intervals.length - 1; index += 1) {
-    const hr = intervals[index]?.averageHeartrate;
-    if (hr != null && hr <= cutoff) {
-      phases[index] = "warmup";
-    } else {
-      break;
-    }
-  }
-  for (let index = intervals.length - 1; index > 0; index -= 1) {
-    if (phases[index] === "warmup") {
-      break;
-    }
-    const hr = intervals[index]?.averageHeartrate;
-    if (hr != null && hr <= cutoff) {
-      phases[index] = "cooldown";
-    } else {
-      break;
-    }
-  }
-}
-
-function formatPhaseBuckets(
-  tagged: Array<{ interval: WorkoutInterval; phase: Phase }>,
+  phaseFor: (interval: WorkoutInterval) => Phase,
 ): string[] {
-  const order: Phase[] = ["warmup", "work", "recovery", "cooldown"];
   const lines: string[] = [];
-  for (const phase of order) {
-    const group = tagged
-      .filter((item) => item.phase === phase)
-      .map((item) => item.interval);
-    if (group.length) {
-      lines.push(formatPhaseGroup(group, phase));
+  let lastPhase: Phase | null = null;
+  let number = 0;
+  for (const interval of intervals) {
+    const phase = phaseFor(interval);
+    if (phase !== lastPhase) {
+      lines.push(headingForPhase(phase));
+      lastPhase = phase;
     }
+    number += 1;
+    lines.push(formatNumberedLap(number, interval));
   }
   return lines;
+}
+
+function headingForPhase(phase: Phase): string {
+  switch (phase) {
+    case "warmup":
+      return "Warm-up";
+    case "cooldown":
+      return "Cool-down";
+    case "recovery":
+      return "Recovery";
+    default:
+      return "Workout";
+  }
+}
+
+function formatNumberedLap(number: number, interval: WorkoutInterval): string {
+  const time = interval.movingTimeSec ?? 0;
+  const distance = interval.distanceMeters ?? 0;
+  const bits = [
+    String(number),
+    durationBit(time),
+    distanceBit(distance),
+    paceOrSpeedBit(time, distance),
+    wattsBit(interval.averageWatts),
+    hrBit(interval.averageHeartrate),
+  ].filter(Boolean);
+  return bits.join(" · ");
 }
 
 function formatPhaseGroup(group: WorkoutInterval[], phase?: Phase): string {
@@ -723,14 +674,6 @@ function weightedAverage(
     weight += seconds;
   }
   return weight ? sum / weight : null;
-}
-
-function median(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
 function distanceBit(meters: number | null | undefined): string {

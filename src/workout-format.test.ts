@@ -174,169 +174,100 @@ describe("formatWorkoutDetail", () => {
     ).toBe("180 kcal\nPush: bench, OHP, dips");
   });
 
-  it("groups kilometre autolaps into warmup and work with real lap times", () => {
-    const intervals = [
-      {
-        type: "WORK",
-        movingTimeSec: 360,
-        distanceMeters: 1000,
-        averageHeartrate: 146,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 348,
-        distanceMeters: 1000,
-        averageHeartrate: 148,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 330,
-        distanceMeters: 1000,
-        averageHeartrate: 165,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 320,
-        distanceMeters: 1000,
-        averageHeartrate: 174,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 318,
-        distanceMeters: 1000,
-        averageHeartrate: 176,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 315,
-        distanceMeters: 1000,
-        averageHeartrate: 177,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 312,
-        distanceMeters: 1000,
-        averageHeartrate: 179,
-      },
-      {
-        type: "RECOVERY",
-        movingTimeSec: 360,
-        distanceMeters: 1000,
-        averageHeartrate: 166,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 348,
-        distanceMeters: 1000,
-        averageHeartrate: 164,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 325,
-        distanceMeters: 1000,
-        averageHeartrate: 176,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 322,
-        distanceMeters: 1000,
-        averageHeartrate: 175,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 328,
-        distanceMeters: 1000,
-        averageHeartrate: 173,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 330,
-        distanceMeters: 1000,
-        averageHeartrate: 172,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 332,
-        distanceMeters: 1000,
-        averageHeartrate: 171,
-      },
-      {
-        type: "WORK",
-        movingTimeSec: 332,
-        distanceMeters: 1000,
-        averageHeartrate: 170,
-      },
-    ];
+  it("lists Garmin FIT lap intensity as warmup / workout / recovery / cooldown", () => {
+    const km = (
+      seconds: number,
+      hr: number,
+      fitLapIntensity: string,
+      type = "WORK",
+    ) => ({
+      type,
+      movingTimeSec: seconds,
+      distanceMeters: 1000,
+      averageHeartrate: hr,
+      fitLapIntensity,
+    });
     const text = formatWorkoutDetail({
       type: "Run",
-      distanceMeters: 15000,
-      movingTimeSec: 4980,
+      name: "Melbourne - Lily long run",
+      distanceMeters: 15012,
+      movingTimeSec: 4984,
       averageHeartrate: 169,
       maxHeartrate: 187,
-      elevationGainM: 115,
-      averageCadence: 88,
-      calories: 1228,
-      trainingLoad: 113,
-      intensity: 89,
-      intervals,
+      intervals: [
+        km(324, 146, "warmup"),
+        km(352, 148, "warmup"),
+        km(324, 165, "active"),
+        km(328, 174, "active"),
+        km(324, 176, "active"),
+        km(326, 177, "active"),
+        km(323, 179, "active"),
+        km(376, 166, "recovery", "RECOVERY"),
+        km(334, 164, "active"),
+        km(320, 176, "active"),
+        km(325, 178, "active"),
+        km(325, 178, "active"),
+        km(325, 179, "active"),
+        km(359, 158, "cooldown"),
+        km(344, 172, "cooldown"),
+        {
+          type: "WORK",
+          movingTimeSec: 3,
+          distanceMeters: 5,
+          averageHeartrate: 175,
+          fitLapIntensity: "cooldown",
+        },
+      ],
     });
-    expect(text).toBe(
-      [
-        "Pace 5:32/km · HR 169 (max 187) · Elev 115 m · 88 rpm · Load 113 · Intensity 89% · 1228 kcal",
-        "Warm-up · 2 laps · 11m 48s · 2.0 km · 5:54/km · 147 bpm",
-        "Work · 13 laps · 1h 11m 12s · 13.0 km · 5:29/km · 172 bpm",
-      ].join("\n"),
+    expect(text).toContain("Warm-up\n1 · 5m 24s · 1.0 km · 5:24/km · 146 bpm");
+    expect(text).toContain("2 · 5m 52s · 1.0 km · 5:52/km · 148 bpm");
+    expect(text).toContain("Workout\n3 · 5m 24s · 1.0 km · 5:24/km · 165 bpm");
+    expect(text).toContain("Recovery\n8 · 6m 16s · 1.0 km · 6:16/km · 166 bpm");
+    expect(text).toContain("Workout\n9 · 5m 34s · 1.0 km · 5:34/km · 164 bpm");
+    expect(text).toContain(
+      "Cool-down\n14 · 5m 59s · 1.0 km · 5:59/km · 158 bpm",
     );
-    expect(text).not.toContain("Work · 5m");
+    expect(text).toContain("15 · 5m 44s · 1.0 km · 5:44/km · 172 bpm");
+    expect(text).not.toContain("16 ·");
   });
 
-  it("groups trailing easy autolaps as cool-down", () => {
+  it("falls back to Intervals WORK/RECOVERY laps when there is no FIT intensity", () => {
     const text = formatWorkoutDetail({
       type: "Run",
-      distanceMeters: 6000,
-      movingTimeSec: 2100,
+      distanceMeters: 5000,
+      movingTimeSec: 1500,
       intervals: [
         {
           type: "WORK",
-          movingTimeSec: 400,
+          movingTimeSec: 300,
+          distanceMeters: 1000,
+          averageHeartrate: 150,
+        },
+        {
+          type: "WORK",
+          movingTimeSec: 300,
+          distanceMeters: 1000,
+          averageHeartrate: 152,
+        },
+        {
+          type: "RECOVERY",
+          movingTimeSec: 360,
           distanceMeters: 1000,
           averageHeartrate: 140,
         },
         {
           type: "WORK",
-          movingTimeSec: 390,
+          movingTimeSec: 300,
           distanceMeters: 1000,
-          averageHeartrate: 142,
-        },
-        {
-          type: "WORK",
-          movingTimeSec: 320,
-          distanceMeters: 1000,
-          averageHeartrate: 172,
-        },
-        {
-          type: "WORK",
-          movingTimeSec: 318,
-          distanceMeters: 1000,
-          averageHeartrate: 175,
-        },
-        {
-          type: "WORK",
-          movingTimeSec: 380,
-          distanceMeters: 1000,
-          averageHeartrate: 145,
-        },
-        {
-          type: "WORK",
-          movingTimeSec: 292,
-          distanceMeters: 1000,
-          averageHeartrate: 144,
+          averageHeartrate: 155,
         },
       ],
     });
-    expect(text).toContain("Warm-up · 2 laps");
-    expect(text).toContain("Work · 2 laps");
-    expect(text).toContain("Cool-down · 2 laps · 11m 12s · 2.0 km");
+    expect(text).toContain("Workout\n1 · 5m · 1.0 km");
+    expect(text).toContain("Recovery\n3 · 6m · 1.0 km");
+    expect(text).toContain("Workout\n4 · 5m · 1.0 km");
+    expect(text).not.toContain("Warm-up");
+    expect(text).not.toContain("Cool-down");
   });
 
   it("returns null when Intervals has nothing extra", () => {
