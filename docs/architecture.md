@@ -41,7 +41,7 @@ flowchart TB
   Ingest --> DB
   Ingest -->|"new workout notice"| Channel
   Gateway --> Channel
-  Cron -->|"Mon–Sat 19:00 daily, Sun 19:00 recap, 10:00 connect, Mon 00:00"| Channel
+  Cron -->|"Mon–Sat 19:00 daily, Sun 19:00 recap, 10:00 connect, streak roll after lookback"| Channel
 ```
 
 When a workout lands:

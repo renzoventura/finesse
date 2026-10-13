@@ -68,7 +68,7 @@ Needs Garmin Health API approval and/or an iOS HealthKit app. Amazfit has no pat
 - Individual streak: consecutive weeks hitting 3.
 - Group streak: consecutive weeks every opted-in member hit 3.
 - Sunday 19:00: public week recap of the **current** week (sessions, who led each workout kind, @everyone). `/week` posts the same thing.
-- Monday 00:00: apply streak updates, roll the week. Catch up on boot if the bot was down.
+- Streak roll waits `LOOKBACK_HOURS` after Monday 00:00 (default 36h, so Tuesday 12:00). A Sunday workout that reaches Intervals on Monday still counts. Catch up on boot if the bot was down. If the week was already rolled short, the next catch-up rebuilds streaks from session dates and posts that status in the crew channel.
 - Monday–Saturday 19:00: public daily crew board (`/daily`).
 - 10:00: remind opted-in members who still have no Intervals.icu link (DM first; crew channel if DMs are closed). Skip if they snoozed.
 - One Discord channel for check-ins, boards, workout pings, and the Sunday recap.

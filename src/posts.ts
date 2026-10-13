@@ -15,6 +15,7 @@ import {
   dailyUpdate,
   fallBehindNudge,
   mergeWeekSessions,
+  streakRestoredMessage,
   sundaySummary,
 } from "./templates.js";
 
@@ -155,6 +156,28 @@ export function renderFallBehindNudge(
   });
   const people = status.people.filter((person) => person.checkins < below);
   return fallBehindNudge({ weeklyTarget: config.weeklyTarget, people });
+}
+
+export async function postStreakRestored(
+  client: Client,
+  db: FinesseDb,
+  config: Config,
+  now = new Date(),
+): Promise<string> {
+  const status = db.status({
+    now,
+    timeZone: config.tz,
+    weeklyTarget: config.weeklyTarget,
+  });
+  const text = streakRestoredMessage({
+    groupStreak: status.groupStreak,
+    people: status.people.map((person) => ({
+      discordId: person.discordId,
+      currentStreak: person.currentStreak,
+    })),
+  });
+  await send(client, config.channelId, { content: clipDiscord(text) });
+  return text;
 }
 
 export async function postChannelMessages(

@@ -322,6 +322,22 @@ export function connectNudgeChannel(discordIds: string[]): string | null {
   ].join("\n");
 }
 
+export function streakRestoredMessage(input: {
+  groupStreak: number;
+  people: Array<{ discordId: string; currentStreak: number }>;
+}): string {
+  const weeks = input.groupStreak === 1 ? "week" : "weeks";
+  const lines = input.people.map(
+    (person) => `<@${person.discordId}> — streak **${person.currentStreak}**`,
+  );
+  return [
+    "A workout synced after the week had already rolled. It still counts on the day you trained.",
+    "",
+    `🔥 Group streak: **${input.groupStreak}** ${weeks}`,
+    ...lines,
+  ].join("\n");
+}
+
 export function autoCheckinNotice(input: {
   discordId: string;
   note: string | null;
