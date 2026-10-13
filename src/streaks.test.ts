@@ -46,6 +46,14 @@ describe("closedWeekStarts", () => {
     ]);
   });
 
+  it("keeps Sunday open until the sync grace has passed", () => {
+    expect(closedWeekStarts("2026-09-07", "2026-09-14", 36, 0)).toEqual([]);
+    expect(closedWeekStarts("2026-09-07", "2026-09-15", 36, 11)).toEqual([]);
+    expect(closedWeekStarts("2026-09-07", "2026-09-15", 36, 12)).toEqual([
+      "2026-09-07",
+    ]);
+  });
+
   it("closes multiple missed weeks", () => {
     expect(closedWeekStarts("2026-08-31", "2026-09-14")).toEqual([
       "2026-08-31",

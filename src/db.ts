@@ -7,6 +7,7 @@ import type { SourceAccount } from "./sources/types.js";
 import {
   addDays,
   closedWeekStarts,
+  localHour,
   mondayOf,
   rollWeek,
   toLocalDate,
@@ -91,8 +92,13 @@ export function openDb(path: string) {
   return {
     close: () => db.close(),
     ensureWeek: (now: Date, timeZone: string) => ensureWeek(db, now, timeZone),
-    catchUp: (opts: { now: Date; timeZone: string; weeklyTarget: number }) =>
-      catchUp(db, opts),
+    catchUp: (opts: {
+      now: Date;
+      timeZone: string;
+      weeklyTarget: number;
+      /** Hours after Monday 00:00 before that week’s streak is final. */
+      graceHours?: number;
+    }) => catchUp(db, opts),
     join: (discordId: string, name: string) => joinUser(db, discordId, name),
     getUser: (discordId: string) => getUser(db, discordId),
     updateProfile: (
@@ -310,39 +316,133 @@ function weekWorkouts(db: Sqlite, weekStart: string): WeekWorkout[] {
     .all(weekStart, end) as WeekWorkout[];
 }
 
+function firstCheckinDates(db: Sqlite): Map<string, string> {
+  const rows = db
+    .prepare(
+      "SELECT user_id, MIN(checkin_date) AS first FROM checkins GROUP BY user_id",
+    )
+    .all() as Array<{ user_id: string; first: string }>;
+  return new Map(rows.map((row) => [row.user_id, row.first]));
+}
+
+/** True when a session in this week was stored after that week's Sunday. */
+function weekHasLateSync(
+  db: Sqlite,
+  timeZone: string,
+  weekStart: string,
+): boolean {
+  const sunday = addDays(weekStart, 6);
+  const rows = db
+    .prepare(
+      "SELECT ts FROM checkins WHERE checkin_date >= ? AND checkin_date < ?",
+    )
+    .all(weekStart, addDays(weekStart, 7)) as Array<{ ts: string }>;
+  return rows.some((row) => toLocalDate(new Date(row.ts), timeZone) > sunday);
+}
+
+/**
+ * Replay streak totals from check-ins. A week stays open for `graceHours`
+ * after Monday 00:00 so a Sunday session that syncs on Monday still counts.
+ * If that week was already rolled short, the next catch-up raises the streak
+ * and reports `restored` so the crew channel can be pinged again.
+ *
+ * Members with no sessions yet are left out of past weeks. A replay must not
+ * wipe the crew because someone joined and has not trained.
+ */
 function catchUp(
   db: Sqlite,
-  opts: { now: Date; timeZone: string; weeklyTarget: number },
-): void {
+  opts: {
+    now: Date;
+    timeZone: string;
+    weeklyTarget: number;
+    graceHours?: number;
+  },
+): { restored: boolean } {
   ensureWeek(db, opts.now, opts.timeZone);
+  const firstByUser = firstCheckinDates(db);
+  if (firstByUser.size === 0) {
+    return { restored: false };
+  }
+
   const today = toLocalDate(opts.now, opts.timeZone);
-  const apply = db.transaction(() => {
-    const weeks = closedWeekStarts(getGroupState(db).week_start, today);
-    for (const weekStart of weeks) {
-      const state = getGroupState(db);
-      const users = listOptedIn(db);
-      const rolled = rollWeek({
-        weekStart,
-        groupStreak: state.group_streak,
-        users: users.map((user) => ({
-          discordId: user.discord_id,
-          currentStreak: user.current_streak,
-          checkins: countInWeek(db, user.discord_id, weekStart),
-          weeklyTarget: user.weekly_min || opts.weeklyTarget,
-        })),
-      });
-      const updateUser = db.prepare(
-        "UPDATE users SET current_streak = ? WHERE discord_id = ?",
-      );
-      for (const user of rolled.users) {
-        updateUser.run(user.currentStreak, user.discordId);
-      }
-      db.prepare(
-        "UPDATE group_state SET group_streak = ?, week_start = ? WHERE id = 1",
-      ).run(rolled.groupStreak, rolled.nextWeekStart);
+  const hour = localHour(opts.now, opts.timeZone);
+  const graceHours = opts.graceHours ?? 0;
+  const before = getGroupState(db);
+  const optedIn = listOptedIn(db);
+  const beforeStreaks = new Map(
+    optedIn.map((user) => [user.discord_id, user.current_streak]),
+  );
+
+  let earliest = before.week_start;
+  for (const date of firstByUser.values()) {
+    const week = mondayOf(date);
+    if (week < earliest) {
+      earliest = week;
     }
+  }
+
+  const closed = closedWeekStarts(earliest, today, graceHours, hour);
+  let groupStreak = 0;
+  const streaks = new Map<string, number>();
+  for (const user of optedIn) {
+    streaks.set(user.discord_id, 0);
+  }
+
+  for (const weekStart of closed) {
+    const participants = [];
+    for (const user of optedIn) {
+      const started = firstByUser.get(user.discord_id);
+      if (!started || mondayOf(started) > weekStart) {
+        continue;
+      }
+      participants.push({
+        discordId: user.discord_id,
+        currentStreak: streaks.get(user.discord_id) ?? 0,
+        checkins: countInWeek(db, user.discord_id, weekStart),
+        weeklyTarget: user.weekly_min || opts.weeklyTarget,
+      });
+    }
+    if (participants.length === 0) {
+      continue;
+    }
+    const rolled = rollWeek({
+      weekStart,
+      groupStreak,
+      users: participants,
+    });
+    groupStreak = rolled.groupStreak;
+    for (const user of rolled.users) {
+      streaks.set(user.discordId, user.currentStreak);
+    }
+  }
+
+  const displayWeek = mondayOf(today);
+  const openWeek =
+    displayWeek < before.week_start ? before.week_start : displayWeek;
+
+  const apply = db.transaction(() => {
+    const updateUser = db.prepare(
+      "UPDATE users SET current_streak = ? WHERE discord_id = ?",
+    );
+    for (const [discordId, streak] of streaks) {
+      updateUser.run(streak, discordId);
+    }
+    db.prepare(
+      "UPDATE group_state SET group_streak = ?, week_start = ? WHERE id = 1",
+    ).run(groupStreak, openWeek);
   });
   apply();
+
+  const streakUp = optedIn.some(
+    (user) =>
+      (streaks.get(user.discord_id) ?? 0) >
+      (beforeStreaks.get(user.discord_id) ?? 0),
+  );
+  const raised = streakUp || groupStreak > before.group_streak;
+  const justEnded = addDays(displayWeek, -7);
+  const lateJustEnded =
+    closed.includes(justEnded) && weekHasLateSync(db, opts.timeZone, justEnded);
+  return { restored: raised && lateJustEnded };
 }
 
 function joinUser(
@@ -408,8 +508,8 @@ function recordCheckin(
   },
 ): CheckinResult {
   joinUser(db, discordId, name);
-  const state = getGroupState(db);
   const checkinDate = opts.date ?? toLocalDate(opts.now, opts.timeZone);
+  const countedWeek = mondayOf(checkinDate);
   const source = opts.source ?? "manual";
   const existing = db
     .prepare(
@@ -429,8 +529,8 @@ function recordCheckin(
     }
     return {
       created: false,
-      checkinsThisWeek: countInWeek(db, discordId, state.week_start),
-      weekStart: state.week_start,
+      checkinsThisWeek: countInWeek(db, discordId, countedWeek),
+      weekStart: countedWeek,
     };
   }
 
@@ -440,8 +540,8 @@ function recordCheckin(
 
   return {
     created: true,
-    checkinsThisWeek: countInWeek(db, discordId, state.week_start),
-    weekStart: state.week_start,
+    checkinsThisWeek: countInWeek(db, discordId, countedWeek),
+    weekStart: countedWeek,
   };
 }
 

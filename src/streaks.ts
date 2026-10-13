@@ -62,20 +62,52 @@ export function formatShortDate(localDate: string): string {
   }).format(utc);
 }
 
-/** Week starts that are fully over as of todayLocal (Monday roll). */
+export function localHour(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const raw = parts.find((part) => part.type === "hour")?.value;
+  if (raw === undefined) {
+    throw new Error("Failed to format local hour");
+  }
+  const hour = Number(raw);
+  if (!Number.isInteger(hour)) {
+    throw new Error("Failed to format local hour");
+  }
+  return hour % 24;
+}
+
+function daysBetween(start: string, end: string): number {
+  const ms = parseLocalDate(end).getTime() - parseLocalDate(start).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
+/**
+ * A week closes `graceHours` after the next Monday 00:00 local.
+ * graceHours 0 keeps the old Monday-midnight roll. The default lookback
+ * (36) leaves Sunday open through Tuesday 12:00 so a late watch sync still counts.
+ */
 export function closedWeekStarts(
   weekStart: string,
   todayLocal: string,
+  graceHours = 0,
+  hourLocal = 0,
 ): string[] {
   const closed: string[] = [];
   let current = weekStart;
   for (let i = 0; i < 520; i += 1) {
-    if (addDays(current, 7) <= todayLocal) {
-      closed.push(current);
-      current = addDays(current, 7);
-    } else {
+    const nextMonday = addDays(current, 7);
+    if (todayLocal < nextMonday) {
       break;
     }
+    const elapsed = daysBetween(nextMonday, todayLocal) * 24 + hourLocal;
+    if (elapsed < graceHours) {
+      break;
+    }
+    closed.push(current);
+    current = nextMonday;
   }
   return closed;
 }

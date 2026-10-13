@@ -8,7 +8,7 @@ import { startCron } from "./cron.js";
 import { openDb } from "./db.js";
 import { startHttpServer } from "./http.js";
 import { createLlmProvider } from "./llm/create.js";
-import { postChannelMessages } from "./posts.js";
+import { postChannelMessages, postStreakRestored } from "./posts.js";
 import { createActivitySources } from "./sources/create.js";
 import { ingestAllSources } from "./sources/ingest.js";
 
@@ -19,7 +19,6 @@ async function main(): Promise<void> {
   const sources = createActivitySources(config);
   const now = new Date();
   db.ensureWeek(now, config.tz);
-  db.catchUp({ now, timeZone: config.tz, weeklyTarget: config.weeklyTarget });
 
   const client = createClient();
   const handlers = createHandlers({ db, config, llm, sources });
@@ -30,6 +29,9 @@ async function main(): Promise<void> {
       if (channel?.isSendable()) {
         await channel.send(message);
       }
+    },
+    onStreakRestored: async () => {
+      await postStreakRestored(client, db, config);
     },
   });
 
@@ -42,9 +44,10 @@ async function main(): Promise<void> {
     console.log(
       `LLM: ${llm?.id ?? "none"} · sources: ${Object.keys(sources).join(", ") || "manual only"} · intervals: ${sources.intervals?.auth ?? "off"}${config.intervalsWebhookSecret ? "+webhook" : ""}`,
     );
+    const caughtUpAt = new Date();
     try {
       const result = await ingestAllSources(db, sources, {
-        now: new Date(),
+        now: caughtUpAt,
         timeZone: config.tz,
         lookbackHours: config.lookbackHours,
         weeklyTarget: config.weeklyTarget,
@@ -52,6 +55,16 @@ async function main(): Promise<void> {
       await postChannelMessages(readyClient, config.channelId, result.notices);
     } catch (error) {
       console.error("[startup] ingest", error);
+    }
+    const repair = db.catchUp({
+      now: caughtUpAt,
+      timeZone: config.tz,
+      weeklyTarget: config.weeklyTarget,
+      graceHours: config.lookbackHours,
+    });
+    if (repair.restored) {
+      await postStreakRestored(readyClient, db, config, caughtUpAt);
+      console.log("[streak] late sync restored the streak; status posted");
     }
   });
 

@@ -165,6 +165,140 @@ describe("monday catch-up", () => {
     expect(status.groupStreak).toBe(1);
     db.close();
   });
+
+  it("does not roll at Monday midnight while Sunday can still sync", () => {
+    const db = tempDb();
+    db.join("u1", "Renzo");
+    db.recordCheckin("u1", "Renzo", null, { now: MON_SEP_7, timeZone: TZ });
+    db.recordCheckin("u1", "Renzo", null, {
+      now: new Date("2026-09-09T02:00:00.000Z"),
+      timeZone: TZ,
+    });
+
+    const held = db.catchUp({
+      now: MON_SEP_14,
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+      graceHours: 36,
+    });
+    expect(held.restored).toBe(false);
+    const monday = db.status({
+      now: MON_SEP_14,
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+    });
+    expect(monday.weekStart).toBe("2026-09-14");
+    expect(monday.groupStreak).toBe(0);
+    expect(monday.people[0]?.currentStreak).toBe(0);
+
+    db.recordCheckin("u1", "Renzo", "sunday", {
+      now: new Date("2026-09-13T02:00:00.000Z"),
+      timeZone: TZ,
+      date: "2026-09-13",
+    });
+    const tuesdayNoon = new Date("2026-09-15T02:00:00.000Z");
+    const rolled = db.catchUp({
+      now: tuesdayNoon,
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+      graceHours: 36,
+    });
+    expect(rolled.restored).toBe(false);
+    const after = db.status({
+      now: tuesdayNoon,
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+    });
+    expect(after.weekStart).toBe("2026-09-14");
+    expect(after.groupStreak).toBe(1);
+    expect(after.people[0]?.currentStreak).toBe(1);
+    db.close();
+  });
+
+  it("restores the streak when Sunday syncs after Monday already rolled", () => {
+    const db = tempDb();
+    db.join("u1", "Renzo");
+    db.join("u2", "Saish");
+    db.join("u3", "Lurker");
+    for (const day of [7, 8, 9]) {
+      db.recordCheckin("u2", "Saish", null, {
+        now: new Date(`2026-09-${String(day).padStart(2, "0")}T02:00:00.000Z`),
+        timeZone: TZ,
+      });
+    }
+    db.recordCheckin("u1", "Renzo", null, { now: MON_SEP_7, timeZone: TZ });
+    db.recordCheckin("u1", "Renzo", null, {
+      now: new Date("2026-09-09T02:00:00.000Z"),
+      timeZone: TZ,
+    });
+
+    db.catchUp({ now: MON_SEP_14, timeZone: TZ, weeklyTarget: TARGET });
+    const lost = db.status({
+      now: MON_SEP_14,
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+    });
+    expect(lost.groupStreak).toBe(0);
+    expect(lost.people.find((p) => p.discordId === "u1")?.currentStreak).toBe(
+      0,
+    );
+    expect(lost.people.find((p) => p.discordId === "u2")?.currentStreak).toBe(
+      1,
+    );
+
+    const sunday = db.recordCheckin("u1", "Renzo", "long run", {
+      now: new Date("2026-09-14T02:00:00.000Z"),
+      timeZone: TZ,
+      date: "2026-09-13",
+    });
+    expect(sunday.checkinsThisWeek).toBe(3);
+
+    const repair = db.catchUp({
+      now: new Date("2026-09-15T02:00:00.000Z"),
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+      graceHours: 36,
+    });
+    expect(repair.restored).toBe(true);
+    const status = db.status({
+      now: new Date("2026-09-15T02:00:00.000Z"),
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+    });
+    expect(status.groupStreak).toBe(1);
+    expect(status.people.find((p) => p.discordId === "u1")?.currentStreak).toBe(
+      1,
+    );
+    expect(status.people.find((p) => p.discordId === "u2")?.currentStreak).toBe(
+      1,
+    );
+    expect(status.people.find((p) => p.discordId === "u3")?.currentStreak).toBe(
+      0,
+    );
+
+    for (const day of [14, 15, 16]) {
+      const when = new Date(
+        `2026-09-${String(day).padStart(2, "0")}T02:00:00.000Z`,
+      );
+      db.recordCheckin("u1", "Renzo", null, { now: when, timeZone: TZ });
+      db.recordCheckin("u2", "Saish", null, { now: when, timeZone: TZ });
+    }
+    const nextWeek = db.catchUp({
+      now: new Date("2026-09-22T02:00:00.000Z"),
+      timeZone: TZ,
+      weeklyTarget: TARGET,
+      graceHours: 36,
+    });
+    expect(nextWeek.restored).toBe(false);
+    expect(
+      db.status({
+        now: new Date("2026-09-22T02:00:00.000Z"),
+        timeZone: TZ,
+        weeklyTarget: TARGET,
+      }).groupStreak,
+    ).toBe(2);
+    db.close();
+  });
 });
 
 describe("Intervals onboarding", () => {

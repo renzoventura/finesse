@@ -201,7 +201,7 @@ Finesse is a private Discord bot. Linked Intervals.icu accounts are used only to
 - Garmin → Intervals webhook — same ping, if OAuth + `PUBLIC_URL` are configured
 - Mon–Sat 19:00 — `/daily` board (everyone, sessions so far, who still needs days)
 - Sun 19:00 — `/week` recap (how the week went, session list, leaders by workout kind)
-- Mon 00:00 — streak roll
+- Tue 12:00 by default (`LOOKBACK_HOURS` after Monday 00:00) — streak roll, so a Sunday workout that syncs Monday still counts. If a week was already rolled short, the next boot posts the corrected streak in the crew channel.
 
 Post immediately (needs a running bot, or `--dry` to print only):
 

@@ -7,6 +7,7 @@ import {
   postChannelMessages,
   postConnectReminders,
   postDailyUpdate,
+  postStreakRestored,
   postSundaySummary,
 } from "./posts.js";
 import { ingestAllSources } from "./sources/ingest.js";
@@ -29,11 +30,16 @@ export function startCron(
   schedule(
     "0 0 * * 1",
     wrap("monday-reset", async () => {
-      db.catchUp({
+      const repair = db.catchUp({
         now: new Date(),
         timeZone: config.tz,
         weeklyTarget: config.weeklyTarget,
+        graceHours: config.lookbackHours,
       });
+      if (repair.restored) {
+        await postStreakRestored(client, db, config);
+        console.log("[streak] late sync restored the streak; status posted");
+      }
       console.log("[cron] monday reset applied");
     }),
     { timezone },
@@ -42,13 +48,24 @@ export function startCron(
   schedule(
     "*/15 * * * *",
     wrap("source-ingest", async () => {
+      const now = new Date();
       const result = await ingestAllSources(db, sources, {
-        now: new Date(),
+        now,
         timeZone: config.tz,
         lookbackHours: config.lookbackHours,
         weeklyTarget: config.weeklyTarget,
       });
       await postChannelMessages(client, config.channelId, result.notices);
+      const repair = db.catchUp({
+        now,
+        timeZone: config.tz,
+        weeklyTarget: config.weeklyTarget,
+        graceHours: config.lookbackHours,
+      });
+      if (repair.restored) {
+        await postStreakRestored(client, db, config, now);
+        console.log("[streak] late sync restored the streak; status posted");
+      }
     }),
     { timezone },
   );

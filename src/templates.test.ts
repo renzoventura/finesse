@@ -9,6 +9,7 @@ import {
   formatWorkoutLabel,
   mergeWeekSessions,
   onboardWelcomeChannel,
+  streakRestoredMessage,
   sundaySummary,
 } from "./templates.js";
 
@@ -211,6 +212,20 @@ describe("templates", () => {
     expect(text).toContain("<@u1>");
     expect(text).toContain("intervals.icu/signup");
     expect(text).toContain("Link Intervals.icu");
+  });
+
+  it("pings the crew when a late sync restores the streak", () => {
+    const text = streakRestoredMessage({
+      groupStreak: 4,
+      people: [
+        { discordId: "renzo", currentStreak: 4 },
+        { discordId: "saish", currentStreak: 4 },
+      ],
+    });
+    expect(text).toContain("still counts on the day you trained");
+    expect(text).toContain("Group streak: **4** weeks");
+    expect(text).toContain("<@renzo> — streak **4**");
+    expect(text).toContain("<@saish>");
   });
 
   it("mentions unlinked members in the daily connect nudge", () => {

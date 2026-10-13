@@ -12,6 +12,7 @@ import type { ActivitySource } from "./sources/types.js";
 
 export type HttpHooks = {
   onAutoCheckin?: (message: string) => Promise<void>;
+  onStreakRestored?: () => Promise<void>;
 };
 
 export function startHttpServer(
@@ -61,6 +62,17 @@ export function startHttpServer(
           console.error("[webhook] notify", error);
         });
       }
+    }
+    const repair = db.catchUp({
+      now: new Date(),
+      timeZone: config.tz,
+      weeklyTarget: config.weeklyTarget,
+      graceHours: config.lookbackHours,
+    });
+    if (repair.restored && hooks.onStreakRestored) {
+      await hooks.onStreakRestored().catch((error: unknown) => {
+        console.error("[webhook] streak", error);
+      });
     }
     console.log(
       `[webhook] intervals: ${result.notices.length} new workout(s), ${result.created} new day(s)`,
